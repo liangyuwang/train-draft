@@ -79,9 +79,7 @@ def partition_tensors(
         tensor_dict (OrderedDict): mapping (group_idx, param_idx) -> tensor.
         ranks_map (list, optional): explicit mapping of parts to rank ids. Defaults to None.
         num_parts (int, optional): number of partitions if ranks_map is not provided.
-        evenness_priority (float): not used in greedy strategy (reserved for compatibility).
         verbose (bool): whether to print warnings and debug info.
-        malloc (bool): kept for API compatibility, no effect here.
         deterministic (bool): if True, tie-breaking is stable by sorting keys as secondary criterion.
 
     Returns:
