@@ -1,4 +1,53 @@
 import math
+import argparse
+
+def get_training_args():
+    """
+    Based on TrainerConfig and GPTConfig
+    """
+    parser = argparse.ArgumentParser(description="Training Configuration")
+    # Training hyperparameters
+    parser.add_argument("--seed", type=int, default=1337, help="Random seed for reproducibility")
+    parser.add_argument("--log_dir", type=str, default="./log/", help="Directory for logging")
+    parser.add_argument("--dataset_path", type=str, default="../data/fineweb-edu-sample-10BT/", help="Path to the dataset")
+    parser.add_argument("--tokenizer_name", type=str, default="gpt2", help="Tokenizer name")
+    parser.add_argument("--total_batch_size", type=int, default=524288, help="Total batch size in number of tokens")
+    parser.add_argument("--B", type=int, default=8, help="Micro batch size per device")
+    parser.add_argument("--T", type=int, default=4096, help="Sequence length")
+    parser.add_argument("--shift", type=int, default=1, help="Shift for next-token prediction")
+    parser.add_argument("--max_lr", type=float, default=6e-4, help="Maximum learning rate")
+    parser.add_argument("--min_lr", type=float, default=6e-5, help="Minimum learning rate")
+    parser.add_argument("--weight_decay", type=float, default=0.1, help="Weight decay for optimizer")
+    parser.add_argument("--grad_clip_value", type=float, default=1.0, help="Gradient clipping value")
+    parser.add_argument("--warmup_steps", type=int, default=1000, help="Number of warmup steps")
+    parser.add_argument("--max_steps", type=int, default=None, help="Maximum number of training steps")
+    parser.add_argument("--max_epochs", type=int, default=1, help="Maximum number of epochs")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--do_val", action="store_true", help="Enable validation")
+    parser.add_argument("--val_every_steps", type=int, default=250, help="Validation frequency in steps")
+    parser.add_argument("--do_inference", action="store_true", help="Enable inference")
+    parser.add_argument("--split_rate", type=float, default=0.99, help="Train/validation split rate")
+    parser.add_argument("--do_save", action="store_true", help="Enable checkpoint saving")
+    parser.add_argument("--save_every_steps", type=int, default=5000, help="Checkpoint saving frequency in steps")
+    parser.add_argument("--shift_every_steps", type=int, default=None, help="Steps to shift for multi-token prediction")
+    parser.add_argument("--use_compile", action="store_true", help="Use torch.compile for optimization")
+    parser.add_argument("--use_profiler", action="store_true", help="Enable profiler")
+    parser.add_argument("--steps_to_profile", type=int, nargs='+', default=[15, 20], help="Steps to profile")
+    # Model hyperparameters
+    parser.add_argument("--block_size", type=int, default=4096, help="Context length")
+    parser.add_argument("--vocab_size", type=int, default=50304, help="Vocabulary size")
+    parser.add_argument("--max_vocab_size", type=int, default=50257, help="Maximum vocabulary size")
+    parser.add_argument("--num_layer", type=int, default=32, help="Number of transformer layers")
+    parser.add_argument("--num_head", type=int, default=16, help="Number of attention heads")
+    parser.add_argument("--hidden_size", type=int, default=1024, help="Hidden size of the model")
+    parser.add_argument("--intermediate_size", type=int, default=4096, help="Intermediate size of the model")
+    parser.add_argument("--dropout", type=float, default=0.0, help="Dropout rate")
+    parser.add_argument("--use_moe_ratio", type=float, default=1.0, help="Ratio of layers using MoE")
+    parser.add_argument("--num_expert", type=int, default=128, help="Number of experts in MoE")
+    parser.add_argument("--top_k", type=int, default=8, help="Top-k experts to use in MoE")
+    parser.add_argument("--moe_intermediate_size", type=int, default=256, help="Intermediate size for MoE layers")
+    args = parser.parse_args()
+    return args
 
 def get_training_info(
     num_samples,
