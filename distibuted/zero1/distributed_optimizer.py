@@ -1,4 +1,5 @@
 import torch
+import heapq
 from collections import OrderedDict
 
 class DistributedOptimizer:
@@ -8,124 +9,125 @@ class DistributedOptimizer:
             dp_rank, 
             ranks_map=None, 
             num_parts=None, 
-            evenness_priority=0.0, 
             verbose=False
         ):
-        self.optimizer = optimizer
-        self.ranks_map = ranks_map
-        self.num_parts = num_parts
-        self.evenness_priority = evenness_priority
-        self.verbose = verbose
+        object.__setattr__(self, "optimizer", optimizer)
+        object.__setattr__(self, "ranks_map", ranks_map)
+        object.__setattr__(self, "num_parts", num_parts)
+        object.__setattr__(self, "verbose", verbose)
         self._apply_zero1(dp_rank)
 
     def _apply_zero1(self, dp_rank):
         """
         Apply ZeRO-1 optimization by partitioning optimizer states across data parallel ranks.
         """
-        self.tensor_dict = {}
-        for group in self.optimizer.param_groups:
-            for idx, param in enumerate(group['params']):
+        self.tensor_dict: OrderedDict[tuple[int,int], torch.Tensor] = OrderedDict()
+        self._key_by_param_id = {}
+        for g_idx, group in enumerate(self.optimizer.param_groups):
+            for p_idx, param in enumerate(group["params"]):
+                if not isinstance(param, torch.Tensor):
+                    continue
                 if param.requires_grad:
-                    self.tensor_dict[idx] = param
-        self.part_assignment, _ = partition_tensors(self.tensor_dict, 
-                                                    ranks_map=self.ranks_map,
-                                                    num_parts=self.num_parts,
-                                                    evenness_priority=self.evenness_priority,
-                                                    malloc=False,
-                                                    verbose=self.verbose)
-        for group in self.optimizer.param_groups:
+                    key = (g_idx, p_idx)
+                    self.tensor_dict[key] = param
+                    self._key_by_param_id[id(param)] = key
+        part_assignment, _ = partition_tensors(
+            self.tensor_dict,
+            ranks_map=self.ranks_map,
+            num_parts=self.num_parts,
+            evenness_priority=self.evenness_priority,
+            malloc=False,
+            verbose=self.verbose,
+        )
+        self.part_assignment = part_assignment
+        for g_idx, group in enumerate(self.optimizer.param_groups):
             new_params = []
-            for idx, param in enumerate(group['params']):
-                if param.requires_grad:
-                    part = self.part_assignment[idx]
-                    if dp_rank == part:
-                        new_params.append(self.tensor_dict[idx])
-            group['params'] = new_params
+            for p_idx, param in enumerate(group["params"]):
+                if not (isinstance(param, torch.Tensor) and param.requires_grad):
+                    continue
+                key = (g_idx, p_idx)
+                part = self.part_assignment[key]
+                if dp_rank == part:
+                    new_params.append(param)
+            group["params"] = new_params
 
     def __getattr__(self, name):
         return getattr(self.optimizer, name)
 
+    def __setattr__(self, name, value):
+        if name in {"optimizer", "ranks_map", "num_parts", "verbose", 
+                    "part_assignment", "tensor_dict", "_key_by_param_id"} or name.startswith("_"):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self.optimizer, name, value)
+
+    def __dir__(self):
+        return sorted(set(dir(type(self)) + list(self.__dict__.keys()) + dir(self.optimizer)))
+
 
 def partition_tensors(
-        tensor_dict: OrderedDict, 
-        ranks_map: list = None,
-        num_parts: int = None, 
-        evenness_priority: float = 0, 
-        verbose=False,
-    ):
+    tensor_dict: "OrderedDict[tuple[int,int], torch.Tensor]",
+    ranks_map: list = None,
+    num_parts: int = None,
+    verbose: bool = False,
+    deterministic: bool = True,
+):
     """
-    Partition the tensors of a model into multiple parts for distributed training.
-    This function uses an 'evenness_priority' to control the balance between evenly distributing
-    tensors across partitions and keeping closely related tensors (e.g., those from the same layer or neighbor layers)
-    together within the same partition.
+    Partition tensors across multiple parts (e.g., data parallel ranks) with greedy load balancing.
 
     Args:
-        tensor_dict: OrderedDict, the dict of model tensors (could be on meta device) to partition.
-        ranks_map: list, optional, a list of rank identifiers, each corresponding to a partition.
-        num_parts: int, the number of parts to partition the model into.
-        evenness_priority: float, a priority value ranging from 0 to 1 that determines the balance 
-                        between evenness of tensor distribution and keeping related tensors together.
-                        - A value of 0 prioritizes keeping related tensors together as much as possible,
-                            potentially leading to some partitions being significantly larger or smaller than others.
-                        - A value of 1 prioritizes even distribution of tensors, ensuring that each partition
-                            is as close as possible to having the same number of tensors, even if it means splitting
-                            closely related tensors across different partitions.
-                        - Values in between adjust the sensitivity to these factors dynamically.
-                        - Tips: 
+        tensor_dict (OrderedDict): mapping (group_idx, param_idx) -> tensor.
+        ranks_map (list, optional): explicit mapping of parts to rank ids. Defaults to None.
+        num_parts (int, optional): number of partitions if ranks_map is not provided.
+        evenness_priority (float): not used in greedy strategy (reserved for compatibility).
+        verbose (bool): whether to print warnings and debug info.
+        malloc (bool): kept for API compatibility, no effect here.
+        deterministic (bool): if True, tie-breaking is stable by sorting keys as secondary criterion.
+
     Returns:
-        parts: dict, a dictionary containing the partition, with each partition holding a list of tensor names
-            and their 
-
-    Note:
-        This method ensures that all partitions are used, but an unevenness in tensor sizes may lead to non-ideal
-        distributions. Warnings are printed if any partitions are empty, indicating unused computational resources.
-
-    Tip:
-        Setting the 'evenness_priority':
-        - For a small number of parts (e.g., 2-4), setting 'evenness_priority' closer to 0 helps minimize the risk of
-        underutilizing any computational resource by keeping more related tensors together.
-        - As the number of parts increases, consider increasing the 'evenness_priority' towards 1 to ensure a more
-        uniform distribution of tensors across all computational resources, which can be crucial for efficiency in
-        large-scale distributed training environments.
+        part_assignment (dict): mapping from (group_idx, param_idx) -> partition id.
+        tensor_dict (OrderedDict): original tensor dict, returned for convenience.
     """
-    assert 0 <= evenness_priority <= 1, "Evenness priority must be between 0 and 1"
     if ranks_map:
         num_parts = len(ranks_map)
     else:
-        assert num_parts > 0, "Number of parts must be a positive integer"
-        
-    # Collect all tensors
-    tensors = list(tensor_dict.items())
+        assert num_parts and num_parts > 0, "num_parts must be positive integer"
 
-    # Calculate total number of tensors
-    total_tensors = sum(p.numel() for _, p in tensors)
+    # Collect tensors with sizes
+    tensors = [(key, tensor.numel()) for key, tensor in tensor_dict.items()]
 
-    # Target number of tensors per part
-    target_per_part = total_tensors / num_parts
+    # Sort by size descending, break ties by key if deterministic
+    if deterministic:
+        tensors.sort(key=lambda x: (-x[1], x[0]))
+    else:
+        tensors.sort(key=lambda x: -x[1])
 
-    # Initialize parts and their current sizes
-    parts = {i: [] for i in range(num_parts)}
+    # Initialize heap: (current_size, part_id)
+    heap = [(0, i) for i in range(num_parts)]
+    heapq.heapify(heap)
+
+    part_assignment = {key: None for key in tensor_dict.keys()}
     parts_sizes = {i: 0 for i in range(num_parts)}
-    part_assignment = {}
 
-    current_part = 0
-    for name, tensor in tensors:
-        # Calculate current threshold based on evenness_priority
-        current_threshold = target_per_part * (1 + evenness_priority * (parts_sizes[current_part] / target_per_part - 1))
+    # Assign tensors greedily
+    for key, size in tensors:
+        cur_size, part_id = heapq.heappop(heap)
 
-        # Check if adding this tensor to the current part exceeds the dynamically adjusted threshold
-        if parts_sizes[current_part] + tensor.numel() > current_threshold and parts_sizes[current_part] != 0:
-            current_part = min(current_part + 1, num_parts - 1)
-        
-        # Add tensor to the current part and update the assignment map
-        parts[current_part].append((name, tensor.numel()))
-        parts_sizes[current_part] += tensor.numel()
-        part_assignment[name] = current_part
+        part_assignment[key] = part_id
+        new_size = cur_size + size
+        parts_sizes[part_id] = new_size
 
-    # Check for any empty parts and issue warnings
-    for part, items in parts.items():
-        if not items:
-            warning = f"Warning: Part {part} is empty. Consider adjusting the evenness_priority or the number of parts."
-            if verbose: print(warning)
+        heapq.heappush(heap, (new_size, part_id))
+
+    # Debug / warnings
+    if verbose:
+        for part_id in range(num_parts):
+            if parts_sizes[part_id] == 0:
+                print(f"[ZeRO-1] Warning: Partition {part_id} is empty.")
+        total_elems = sum(s for s in parts_sizes.values())
+        max_size = max(parts_sizes.values())
+        min_size = min(parts_sizes.values())
+        imbalance = (max_size - min_size) / (total_elems / num_parts + 1e-6)
+        print(f"[ZeRO-1] Partition load imbalance: {imbalance:.2%}")
 
     return part_assignment, tensor_dict
