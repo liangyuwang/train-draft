@@ -1,4 +1,5 @@
 import torch
+import torch.distributed as dist
 import heapq
 from collections import OrderedDict
 
@@ -6,18 +7,23 @@ class DistributedOptimizer:
     def __init__(
             self, 
             optimizer, 
-            dp_rank, 
+            process_group,      # torch.distributed group, e.g. dp_group
             ranks_map=None, 
             num_parts=None, 
             verbose=False
         ):
         object.__setattr__(self, "optimizer", optimizer)
+        object.__setattr__(self, "process_group", process_group)
         object.__setattr__(self, "ranks_map", ranks_map)
         object.__setattr__(self, "num_parts", num_parts)
         object.__setattr__(self, "verbose", verbose)
-        self._apply_zero1(dp_rank)
+        self.rank = dist.get_rank(process_group)
+        self.world_size = dist.get_world_size(process_group)
+        if self.num_parts is None:
+            self.num_parts = self.world_size
+        self._apply_zero1()
 
-    def _apply_zero1(self, dp_rank):
+    def _apply_zero1(self):
         """
         Apply ZeRO-1 optimization by partitioning optimizer states across data parallel ranks.
         """
@@ -47,7 +53,7 @@ class DistributedOptimizer:
                     continue
                 key = (g_idx, p_idx)
                 part = self.part_assignment[key]
-                if dp_rank == part:
+                if self.rank == part:
                     new_params.append(param)
             group["params"] = new_params
 
@@ -55,8 +61,11 @@ class DistributedOptimizer:
         return getattr(self.optimizer, name)
 
     def __setattr__(self, name, value):
-        if name in {"optimizer", "ranks_map", "num_parts", "verbose", 
-                    "part_assignment", "tensor_dict", "_key_by_param_id"} or name.startswith("_"):
+        if name in {
+            "optimizer", "process_group", "ranks_map", "num_parts", "partition_strategy",
+            "verbose", "part_assignment", "tensor_dict", "_key_by_param_id",
+            "rank", "world_size"
+        } or name.startswith("_"):
             object.__setattr__(self, name, value)
         else:
             setattr(self.optimizer, name, value)
