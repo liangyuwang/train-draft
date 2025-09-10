@@ -143,7 +143,6 @@ class Trainer:
     def _one_training_micro_step(self, config: TrainerConfig, micro_step: int, data_batch: dict):
         x, y = data_batch["input_ids"], data_batch["labels"]
         x, y = x.to(f'cuda:{self.dp_local_rank}'), y.to(f'cuda:{self.dp_local_rank}')
-        self.model.require_backward_grad_sync = (micro_step == self.training_info["grad_accum_steps"] - 1)
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             _, loss = self.model(x, y)
         loss = loss / self.training_info["grad_accum_steps"]
@@ -160,6 +159,7 @@ class Trainer:
             except StopIteration:
                 self.train_loader_iter = enumerate(self.train_loader)
                 _, batch = next(self.train_loader_iter)
+            self.model.require_backward_grad_sync = (micro_step == self.training_info["grad_accum_steps"] - 1)
             loss_accum += self._one_training_micro_step(config, micro_step, batch)
         dist.all_reduce(loss_accum, op=dist.ReduceOp.AVG)
         norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.grad_clip_value)
