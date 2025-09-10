@@ -30,8 +30,8 @@ Features:
 @dataclass
 class TrainerConfig:
     seed = 1337
-    dataset_path = "../data/fineweb-edu-sample-10BT/"
     log_dir = "./log/"
+    dataset_path = "../data/fineweb-edu-sample-10BT/"
     tokenizer_name = "gpt2"
     total_batch_size = 524288 # 2**19, ~0.5M, in number of tokens, range 0.5~4M, usually 1~2M
     B = 8 # micro batch size per device
@@ -46,13 +46,14 @@ class TrainerConfig:
     max_epochs = 1
     debug = True
     do_val = False
+    val_every_steps = 250
     do_inference = True
     split_rate=0.99 if do_val else 1.0
-    val_every_steps = 250
+    do_save = True
     save_every_steps = 5000
     shift_every_steps = None
     use_compile = False
-    use_profiler = True
+    use_profiler = False
     steps_to_profile = [15, 20] # steps to profile
 
 
@@ -90,7 +91,11 @@ class Trainer:
         self.tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name)
         self.model_config = GPTConfig()
         model = GPT(self.model_config)
-        self.model = DDP(model, device_ids=[self.dp_local_rank])
+        if config.use_compile and hasattr(torch, 'compile'):
+            model = torch.compile(model)
+        model = model.to(f'cuda:{self.dp_local_rank}')
+        #TODO: Here ZeRO-1 only need 'reduce' not 'all-reduce', we can develop a custom DDP for ZeRO-1
+        self.model = DDP(model, process_group=self.dp_group)
         self.raw_model = self.model.module
 
     def _init_optimizer(self, config: TrainerConfig):

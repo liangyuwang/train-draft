@@ -73,6 +73,49 @@ class DistributedOptimizer:
     def __dir__(self):
         return sorted(set(dir(type(self)) + list(self.__dict__.keys()) + dir(self.optimizer)))
 
+    @torch.no_grad()
+    def step(self, *args, **kwargs):
+        """
+        1) Perform local optimizer step on locally-owned params only.
+        2) Broadcast the updated local-owned params to all ranks in the group,
+           so that all replicas have identical parameters before next forward.
+        TODO: make broadcast async with CUDA streams, or move it to model forward.
+        """
+        out = self.optimizer.step(*args, **kwargs)
+        self._broadcast_owned_params()
+        return out
+
+    @torch.no_grad()
+    def _broadcast_owned_params(self):
+        """
+        Broadcast parameters owned by this rank to all ranks in `self.group`.
+        Options:
+          - naive per-parameter broadcast (simple, more calls)
+          - coalesce by dtype/device for fewer calls (optional)
+        """
+        owned = []
+        for key, p in self.tensor_dict.items():
+            if self.part_assignment[key] == self.rank:
+                owned.append(p)
+        if not owned:
+            return
+        if not self.coalesce:
+            # Naive per-parameter broadcast
+            for p in owned:
+                dist.broadcast(p.data, src=self.rank, group=self.group)
+        else:
+            # Coalesce by (device, dtype) to reduce # of collectives
+            buckets = {}
+            for p in owned:
+                k = (p.device, p.dtype)
+                buckets.setdefault(k, []).append(p)
+            for (device, dtype), plist in buckets.items():
+                # Flatten -> broadcast -> unflatten
+                flat = torch._utils._flatten_dense_tensors([p.data for p in plist])
+                dist.broadcast(flat, src=self.rank, group=self.group)
+                for buf, p in zip(torch._utils._unflatten_dense_tensors(flat, [p.data for p in plist]), plist):
+                    p.data.copy_(buf)
+
 
 def partition_tensors(
     tensor_dict: "OrderedDict[tuple[int,int], torch.Tensor]",
