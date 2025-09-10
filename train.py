@@ -18,6 +18,7 @@ from transformers import AutoTokenizer, set_seed
 
 from stream_dataloader.dataset import SlidingTokenDataset
 from model import GPTConfig, GPT
+from distributed import DistributedOptimizer
 from utils import get_training_info
 
 """
@@ -94,6 +95,11 @@ class Trainer:
 
     def _init_optimizer(self, config: TrainerConfig):
         self.optimizer = torch.optim.AdamW(self.raw_model.parameters())
+        self.optimizer = DistributedOptimizer(
+            optimizer=self.optimizer,
+            dp_rank=self.dp_rank,
+            num_parts=self.dp_world_size,
+        )
 
     def __init__(self, config: TrainerConfig):
         self.config = config
