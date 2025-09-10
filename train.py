@@ -13,7 +13,6 @@ import torch.nn.functional as F
 import torch.distributed as dist
 from torch.distributed.checkpoint import save_state_dict, load_state_dict
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.profiler import profile, schedule, ProfilerActivity, tensorboard_trace_handler
 from transformers import AutoTokenizer, set_seed
 
 from stream_dataloader.dataset import SlidingTokenDataset
@@ -234,7 +233,7 @@ class Trainer:
                 record_shapes=True,
                 with_stack=True,
                 with_flops=True,
-                activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
             )
             self.profiler.start()
         else:
