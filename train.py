@@ -18,7 +18,7 @@ from transformers import AutoTokenizer, set_seed
 from stream_dataloader.dataset import SlidingTokenDataset
 from model import GPTConfig, GPT
 from distributed import DistributedOptimizer
-from utils import get_training_info
+from utils import get_training_args, get_training_info
 
 """
 Features:
@@ -86,10 +86,10 @@ class Trainer:
         else:
             self.val_dataset = self.val_loader = None
 
-    def _init_model(self, config: TrainerConfig):
+    def _init_model(self, config: TrainerConfig, model_config: GPTConfig = None):
         torch.set_float32_matmul_precision('high')
         self.tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name)
-        self.model_config = GPTConfig()
+        self.model_config = GPTConfig() if model_config is None else model_config
         model = GPT(self.model_config)
         if config.use_compile and hasattr(torch, 'compile'):
             model = torch.compile(model)
@@ -105,7 +105,7 @@ class Trainer:
             process_group=self.dp_group,
         )
 
-    def __init__(self, config: TrainerConfig):
+    def __init__(self, config: TrainerConfig, model_config: GPTConfig = None):
         self.config = config
         self._init_setup(config)
         assert config.total_batch_size % (config.B * config.T * self.dp_world_size) == 0, "make sure total_batch_size is divisible by B * T * dp_world_size"
@@ -116,7 +116,7 @@ class Trainer:
             print(f"The training process will train {self.training_info['epochs']} epochs, {self.training_info['max_steps']} steps.")
             print(f"=> calculated gradient accumulation steps: {self.training_info['grad_accum_steps']}")
             print(f"=> calculated tokens per step: {self.training_info['total_tokens_per_step']}")
-        self._init_model(config)
+        self._init_model(config, model_config)
         self._init_optimizer(config)
         # create the log directory we will write checkpoints to and log to
         self.log_dir = os.path.join(
@@ -327,3 +327,21 @@ class Trainer:
                 'rng_state': rng_state,
             }
             torch.save(checkpoint, f"{checkpoint_path}_meta.pt")
+
+
+def main():
+    args = get_training_args()
+    config = TrainerConfig()
+    for k, v in vars(args).items():
+        if hasattr(config, k):
+            setattr(config, k, v)
+    model_config = GPTConfig()
+    for k, v in vars(args).items():
+        if hasattr(model_config, k):
+            setattr(model_config, k, v)
+    trainer = Trainer(config, model_config)
+    trainer.train()
+
+
+if __name__ == "__main__":
+    main()

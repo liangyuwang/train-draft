@@ -79,7 +79,7 @@ class DistributedOptimizer:
         1) Perform local optimizer step on locally-owned params only.
         2) Broadcast the updated local-owned params to all ranks in the group,
            so that all replicas have identical parameters before next forward.
-        TODO: make broadcast async with CUDA streams, or move it to model forward.
+        TODO: make broadcast overlap with optimizer step or next forward.
         """
         out = self.optimizer.step(*args, **kwargs)
         self._broadcast_owned_params()
