@@ -48,9 +48,9 @@ MODEL_ARGS="\
   --intermediate_size 3072 \
   --dropout 0.0 \
   --use_moe_ratio 1.0 \
-  --num_expert 512 \
+  --num_expert 256 \
   --top_k 2 \
-  --moe_intermediate_size 512 \
+  --moe_intermediate_size 1024 \
 "
 
 torchrun $DISTRIBUTED_ARGS train.py $TRAINING_ARGS $MODEL_ARGS
