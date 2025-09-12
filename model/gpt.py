@@ -20,17 +20,17 @@ class GPTConfig:
     block_size: int = 4096
     vocab_size: int = 50304
     max_vocab_size: int = 50257
-    num_layer: int = 12
-    num_head: int = 12
-    hidden_size: int = 768
-    intermediate_size: int = 768 * 4
+    num_layer: int = 32
+    num_head: int = 128
+    hidden_size: int = 1024
+    intermediate_size: int = 4096
     dropout: float = 0.0
 
     # MoE
-    use_moe_ratio: float = 1.0
+    use_moe_ratio: float = 1.0  # ratio of layers using MoE
     num_expert: int = 128
     top_k: Union[int, list] = 8  # could be a range from sparse to dense
-    moe_intermediate_size: int = 768
+    moe_intermediate_size: int = 256
 
 class Block(nn.Module):
 
