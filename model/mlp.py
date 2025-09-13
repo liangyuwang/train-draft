@@ -25,17 +25,6 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
-    def forward_group(self, x_list, experts):
-        w_gate = [expert.gate_proj.weight for expert in experts]
-        w_up   = [expert.up_proj.weight   for expert in experts]
-        w_down = [expert.down_proj.weight for expert in experts]
-
-        g_list = group_gemm(x_list, w_gate)
-        u_list = group_gemm(x_list, w_up)
-        mid    = [experts[i].act_fn(g) * u for i, (g,u) in enumerate(zip(g_list,u_list))]
-        y_list = group_gemm(mid, w_down)
-        return y_list
-
 
 class MoE(nn.Module):
     def __init__(self, config: GPTConfig, top_k: int = None):
@@ -111,11 +100,23 @@ class MoE(nn.Module):
         starts = torch.cat([torch.zeros(1, device=x.device, dtype=cumsum.dtype), cumsum[:-1]])
         x_list = [x[tid[s:e]] for s, e in zip(starts.tolist(), cumsum.tolist())]
 
-        # apply for-loop
-        y_list = self.experts[0].forward_group(x_list, self.experts)
+        # apply group gemm for for-loop
+        y_list = moe_group_experts_forward(x_list, self.experts)
         final_x.index_add_(0, tid, torch.cat(y_list, 0) * pflat.unsqueeze(-1))
         final_x = final_x.reshape(B, N, d)
         return final_x, router_logits
+
+
+def moe_group_experts_forward(x_list, experts):
+    w_gate = [expert.gate_proj.weight for expert in experts]
+    w_up   = [expert.up_proj.weight   for expert in experts]
+    w_down = [expert.down_proj.weight for expert in experts]
+
+    g_list = group_gemm(x_list, w_gate)
+    u_list = group_gemm(x_list, w_up)
+    mid    = [experts[i].act_fn(g) * u for i, (g,u) in enumerate(zip(g_list,u_list))]
+    y_list = group_gemm(mid, w_down)
+    return y_list
 
 
 def group_gemm(x_list, w_list):
