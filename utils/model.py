@@ -1,4 +1,42 @@
-def moe_model_params(
+def get_dense_model_params(
+    num_layer: int,
+    hidden_size: int,
+    intermediate_size: int,
+    vocab_size: int,
+):
+    """
+    Compute parameter counts for a dense Transformer model.
+    Args:
+        num_layer (int): number of transformer layers (L)
+        hidden_size (int): hidden dimension (H)
+        intermediate_size (int): feed-forward intermediate size (I)
+        vocab_size (int): vocabulary size (V)
+    Returns:
+        dict: total parameter counts in billions
+    """
+    H = hidden_size
+    L = num_layer
+    I = intermediate_size
+    V = vocab_size
+
+    # Embedding + tied output head
+    P_embed = V * H
+
+    # Dense transformer layer parameters:
+    # Attention: ~4*H^2 (QKV + out projection)
+    # FFN: ~3*H*I (three linear layers: H->I and I->H)
+    P_dense_layer = 4 * H * H + 3 * H * I
+    P_dense_all = L * P_dense_layer
+
+    # Total parameters
+    P_total = P_embed + P_dense_all
+
+    return {
+        "total_params_B": P_total / 1e9,
+        "dense_params_B": P_total / 1e9,
+    }
+
+def get_moe_model_params(
     num_layer: int,
     hidden_size: int,
     intermediate_size: int,
