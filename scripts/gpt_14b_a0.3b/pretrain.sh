@@ -43,7 +43,8 @@ MODEL_ARGS="\
   --block_size 4096 \
   --vocab_size 151936 \
   --num_layer 24 \
-  --num_head 32 \
+  --num_attention_heads 32 \
+  --num_key_value_heads 4 \
   --hidden_size 768 \
   --intermediate_size 3072 \
   --dropout 0.0 \

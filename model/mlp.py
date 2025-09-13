@@ -33,45 +33,43 @@ class MoE(nn.Module):
         self.top_k = top_k if top_k is not None else config.num_experts_per_tok
         self.hidden_size = config.hidden_size
 
-        # gating network
         self.gate = nn.Linear(self.hidden_size, self.num_experts, bias=False)
-        # experts: each is an MLP with use_moe=True (small intermediate size)
         self.experts = nn.ModuleList([MLP(config, use_moe=True) for _ in range(self.num_experts)])
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """ copied from https://github.com/huggingface/transformers/blob/v4.56.1/src/transformers/models/qwen3_moe/modeling_qwen3_moe.py """
-        B, N, d = x.shape
-        x = x.view(-1, d)
-        # router_logits: (batch * N, n_experts)
-        router_logits = self.gate(x)
+    # def forward(self, x: torch.Tensor) -> torch.Tensor:
+    #     """ copied from https://github.com/huggingface/transformers/blob/v4.56.1/src/transformers/models/qwen3_moe/modeling_qwen3_moe.py """
+    #     B, N, d = x.shape
+    #     x = x.view(-1, d)
+    #     # router_logits: (batch * N, n_experts)
+    #     router_logits = self.gate(x)
 
-        routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
-        routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
-        # we cast back to the input dtype
-        routing_weights = routing_weights.to(x.dtype)
-        final_x = torch.zeros((B * N, d), dtype=x.dtype, device=x.device)
+    #     routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
+    #     routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
+    #     # we cast back to the input dtype
+    #     routing_weights = routing_weights.to(x.dtype)
+    #     final_x = torch.zeros((B * N, d), dtype=x.dtype, device=x.device)
 
-        # One hot encode the selected experts to create an expert mask
-        # this will be used to easily index which expert is going to be sollicitated
-        expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
+    #     # One hot encode the selected experts to create an expert mask
+    #     # this will be used to easily index which expert is going to be sollicitated
+    #     expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
 
-        # Loop over all available experts in the model and perform the computation on each expert
-        expert_hit = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
-        for expert_idx in expert_hit:
-            expert_layer = self.experts[expert_idx]
-            idx, top_x = torch.where(expert_mask[expert_idx].squeeze(0))
+    #     # Loop over all available experts in the model and perform the computation on each expert
+    #     expert_hit = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
+    #     for expert_idx in expert_hit:
+    #         expert_layer = self.experts[expert_idx]
+    #         idx, top_x = torch.where(expert_mask[expert_idx].squeeze(0))
 
-            # Index the correct hidden states and compute the expert hidden state for
-            # the current expert. We need to make sure to multiply the output hidden
-            # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
-            current_state = x[None, top_x].reshape(-1, d)
-            current_x = expert_layer(current_state) * routing_weights[top_x, idx, None]
+    #         # Index the correct hidden states and compute the expert hidden state for
+    #         # the current expert. We need to make sure to multiply the output hidden
+    #         # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
+    #         current_state = x[None, top_x].reshape(-1, d)
+    #         current_x = expert_layer(current_state) * routing_weights[top_x, idx, None]
 
-            # However `index_add_` only support torch tensors for indexing so we'll use
-            # the `top_x` tensor here.
-            final_x.index_add_(0, top_x, current_x.to(x.dtype))
-        final_x = final_x.reshape(B, N, d)
-        return final_x, router_logits
+    #         # However `index_add_` only support torch tensors for indexing so we'll use
+    #         # the `top_x` tensor here.
+    #         final_x.index_add_(0, top_x, current_x.to(x.dtype))
+    #     final_x = final_x.reshape(B, N, d)
+    #     return final_x, router_logits
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """ MoE forward with Grouped GEMM version """
@@ -121,12 +119,12 @@ def moe_group_experts_forward(x_list, experts):
 
 def group_gemm(x_list, w_list):
     """ Grouped GEMM with DeepGemm """
-    import deepgemm     #TODO
     y_list = []
     for x, w in zip(x_list, w_list):
         if x.numel() == 0:
             y_list.append(torch.zeros((0, w.size(0)), dtype=x.dtype, device=x.device))
         else:
+            import deepgemm     #TODO: enable DeepGemm
             y = deepgemm.linear(x, w.t())
             y_list.append(y)
     return y_list
