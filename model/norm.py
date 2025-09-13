@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from . import GPTConfig
+from .config import GPTConfig
 
 class LayerNorm(nn.Module):
     def __init__(self, hidden_size: int, eps: float = 1e-6):
