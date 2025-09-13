@@ -98,7 +98,7 @@ class Trainer:
         model = GPT(self.model_config)
         params_config = get_moe_model_params(model) if self.model_config.use_moe_ratio > 0 else get_dense_model_params(model)
         if self.master_process:
-            print(params_config)
+            print(f"Params config: {params_config}")
         if config.use_compile and hasattr(torch, 'compile'):
             model = torch.compile(model)
         model = model.to(f'cuda:{self.dp_local_rank}')
