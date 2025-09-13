@@ -7,7 +7,8 @@ class GPTConfig:
     vocab_size: int = 50304
     max_vocab_size: int = 50257
     num_layer: int = 32
-    num_head: int = 128
+    num_attention_heads: int = 128
+    num_key_value_heads: int = 8
     hidden_size: int = 1024
     intermediate_size: int = 4096
     dropout: float = 0.0
