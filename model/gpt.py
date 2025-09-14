@@ -47,6 +47,12 @@ class GPT(nn.Module):
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         if config.tied_lm_head:
             self.lm_head.weight = self.transformer.wte.weight
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear) or isinstance(module, nn.Embedding):
+            std = 0.02
+            torch.nn.init.normal_(module.weight, mean=0.0, std=std)
 
     def forward(self, idx: torch.Tensor, targets: torch.Tensor):
         B, T = idx.size()
