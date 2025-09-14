@@ -125,14 +125,3 @@ def get_moe_model_params(
         "moe_total_B": P_moe_all / 1e9,
         "moe_active_B": P_moe_active / 1e9,
     }
-
-config = get_moe_model_params(
-    num_layer=20,
-    hidden_size=768,
-    intermediate_size=3072,
-    vocab_size=151936,
-    num_expert=16,
-    top_k=2,
-    moe_intermediate_size=1024,
-)
-print(config)

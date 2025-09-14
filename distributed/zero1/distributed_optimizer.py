@@ -22,6 +22,7 @@ class DistributedOptimizer:
         if self.num_parts is None:
             self.num_parts = self.world_size
         self._apply_zero1()
+        dist.barrier(process_group)
 
     def _apply_zero1(self):
         """
@@ -80,39 +81,23 @@ class DistributedOptimizer:
         TODO: make broadcast overlap with optimizer step or next forward.
         """
         out = self.optimizer.step(*args, **kwargs)
-        self._broadcast_owned_params()
+        if self.world_size > 1:
+            self._broadcast_all_params_from_owners()
         return out
 
     @torch.no_grad()
-    def _broadcast_owned_params(self):
+    def _broadcast_all_params_from_owners(self):
         """
-        Broadcast parameters owned by this rank to all ranks in `self.group`.
-        Options:
-          - naive per-parameter broadcast (simple, more calls)
-          - coalesce by dtype/device for fewer calls (optional)
+        Every rank must call broadcast on the same sequence of tensors with the same src.
+        We iterate over the stable-ordered self.tensor_dict to ensure identical ordering.
         """
-        owned = []
-        for key, p in self.tensor_dict.items():
-            if self.part_assignment[key] == self.rank:
-                owned.append(p)
-        if not owned:
+        # Early exit for single-process runs
+        if self.world_size == 1:
             return
-        if not self.coalesce:
-            # Naive per-parameter broadcast
-            for p in owned:
-                dist.broadcast(p.data, src=self.rank, group=self.group)
-        else:
-            # Coalesce by (device, dtype) to reduce # of collectives
-            buckets = {}
-            for p in owned:
-                k = (p.device, p.dtype)
-                buckets.setdefault(k, []).append(p)
-            for (device, dtype), plist in buckets.items():
-                # Flatten -> broadcast -> unflatten
-                flat = torch._utils._flatten_dense_tensors([p.data for p in plist])
-                dist.broadcast(flat, src=self.rank, group=self.group)
-                for buf, p in zip(torch._utils._unflatten_dense_tensors(flat, [p.data for p in plist]), plist):
-                    p.data.copy_(buf)
+        for key, p in self.tensor_dict.items():
+            src = self.part_assignment[key]
+            # All ranks call broadcast for this tensor, using the same src
+            dist.broadcast(p.data, src=src, group=self.process_group)
 
 
 def partition_tensors(
