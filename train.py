@@ -17,6 +17,7 @@ from transformers import AutoTokenizer, set_seed
 
 from stream_dataloader.dataset import SlidingTokenDataset
 from model import GPTConfig, GPT
+from optimizer import MuonWithAuxAdam
 from distributed import DistributedOptimizer
 from utils import (
     get_training_args, 
@@ -43,6 +44,7 @@ class TrainerConfig:
     B = 8 # micro batch size per device
     T = 4096 # sequence length
     shift = 1   # shift = 1 means next-token-prediction, > 1 means multi-token-prediction
+    use_muon = False
     max_lr = 6e-4
     min_lr = max_lr * 0.1
     weight_decay=0.1
@@ -132,7 +134,20 @@ class Trainer:
         self.raw_model = self.model.module
 
     def _init_optimizer(self, config: TrainerConfig):
-        self.optimizer = torch.optim.AdamW(self.raw_model.parameters())
+        if config.use_muon:
+            muon_params = []
+            adam_params = []
+            for name, param in self.raw_model.named_parameters():
+                if 'attn' in name or 'mlp' in name:
+                    muon_params.append(param)
+                else:
+                    adam_params.append(param)
+            self.optimizer = MuonWithAuxAdam([
+                {'params': muon_params, 'use_muon': True},
+                {'params': adam_params, 'use_muon': False}
+            ])
+        else:
+            self.optimizer = torch.optim.AdamW(self.raw_model.parameters())
         self.optimizer = DistributedOptimizer(
             optimizer=self.optimizer,
             process_group=self.dp_group,

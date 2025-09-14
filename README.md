@@ -1,1 +1,3 @@
-# train-llm-from-scratch
+# train draft
+
+git submodule update --init --recursive

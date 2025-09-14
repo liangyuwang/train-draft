@@ -26,7 +26,8 @@ class Block(nn.Module):
 
     def forward(self, x: torch.Tensor):
         x = x + self.attn(self.ln_1(x))
-        x = x + self.mlp(self.ln_2(x))
+        mlp_out = self.mlp(self.ln_2(x))
+        x = x + mlp_out[0] if self.use_moe else x + mlp_out
         return x
 
 # GPT-like Model
