@@ -96,27 +96,27 @@ class Attention(nn.Module):
         self.num_attention_heads = config.num_attention_heads
         self.num_key_value_heads = config.num_key_value_heads
         self.head_dim = config.hidden_size // config.num_attention_heads
+        self.n_embd = config.hidden_size
+        self.dropout = config.dropout
+        self.pos = None
         # key, query, value projections for all heads, but in a batch        
         self.q_proj = nn.Linear(config.hidden_size, config.num_attention_heads * self.head_dim, bias=False)
         self.k_proj = nn.Linear(config.hidden_size, config.num_key_value_heads * self.head_dim, bias=False)
         self.v_proj = nn.Linear(config.hidden_size, config.num_key_value_heads * self.head_dim, bias=False)
         # output projection
         self.c_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
-        # regularization
-        self.n_embd = config.hidden_size
-        self.pos = None
 
     def forward(self, x: torch.Tensor):
         B, T, C = x.size()
         q, k, v = self.q_proj(x), self.k_proj(x), self.v_proj(x) # (B, T, n_embd)
-        q = q.view(B, T, self.num_attention_heads, C // self.num_attention_heads) # (B, T, nh, hs)
-        k = k.view(B, T, self.num_key_value_heads, C // self.num_key_value_heads) # (B, T, nh, hs)
-        v = v.view(B, T, self.num_key_value_heads, C // self.num_key_value_heads) # (B, T, nh, hs)
+        q = q.view(B, T, self.num_attention_heads, self.head_dim) # (B, T, nh, hs)
+        k = k.view(B, T, self.num_key_value_heads, self.head_dim) # (B, T, nh, hs)
+        v = v.view(B, T, self.num_key_value_heads, self.head_dim) # (B, T, nh, hs)
         k, v = gqa_impl(k, v, self.num_key_value_heads, self.num_attention_heads)
         if self.pos is None:
             self.pos = torch.arange(T, device=x.device).unsqueeze(0)
         q, k = rope_impl(q, k, self.pos)
-        y = F.scaled_dot_product_attention(q, k, v, dropout=self.training, dropout_p=False)
+        y = F.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout, is_causal=True)
         y = y.view(B, T, C)
         # output projection
         y = self.c_proj(y)
