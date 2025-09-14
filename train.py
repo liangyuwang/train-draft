@@ -205,7 +205,7 @@ class Trainer:
             param_group['lr'] = lr
         self.optimizer.step()
         self.one_step_results["lr"] = lr
-        self.one_step_results["loss"] = loss_accum.item()
+        self.one_step_results["loss"] = loss_accum
         self.one_step_results["grad_norm"] = norm
     
     def _resume_from_checkpoint(self, steps_per_epoch):
@@ -284,6 +284,8 @@ class Trainer:
                 with self.profiler.record_function("training_step"):
                     self._one_training_step(self.config, step)
                 self.profiler.step()
+            else:
+                self._one_training_step(self.config, step)
             torch.cuda.synchronize()
             # 2) eval
             if not self.config.debug and self.config.do_val and (step % self.config.val_every_steps == 0 or last_step):
