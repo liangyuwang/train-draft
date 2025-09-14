@@ -1,3 +1,24 @@
+from model.config import GPTConfig
+
+def get_model_params(model_config: GPTConfig):
+    if model_config.use_moe_ratio > 0:
+        return get_moe_model_params(
+            num_layer=model_config.num_layer,
+            hidden_size=model_config.hidden_size,
+            intermediate_size=model_config.intermediate_size,
+            vocab_size=model_config.vocab_size,
+            num_expert=model_config.num_experts,
+            top_k=model_config.num_experts_per_tok if isinstance(model_config.num_experts_per_tok, int) else max(model_config.num_experts_per_tok),
+            moe_intermediate_size=model_config.moe_intermediate_size,
+        )
+    else:
+        return get_dense_model_params(
+            num_layer=model_config.num_layer,
+            hidden_size=model_config.hidden_size,
+            intermediate_size=model_config.intermediate_size,
+            vocab_size=model_config.vocab_size,
+        )
+
 def get_dense_model_params(
     num_layer: int,
     hidden_size: int,
@@ -104,3 +125,14 @@ def get_moe_model_params(
         "moe_total_B": P_moe_all / 1e9,
         "moe_active_B": P_moe_active / 1e9,
     }
+
+config = get_moe_model_params(
+    num_layer=20,
+    hidden_size=768,
+    intermediate_size=3072,
+    vocab_size=151936,
+    num_expert=16,
+    top_k=2,
+    moe_intermediate_size=1024,
+)
+print(config)
