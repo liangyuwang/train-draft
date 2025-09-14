@@ -86,8 +86,9 @@ class Trainer:
                 def __len__(self):
                     return self.length
                 def __getitem__(self, idx):
-                    x = torch.randint(0, self.vocab_size, (self.seq_len,), dtype=torch.long)
-                    y = torch.randint(0, self.vocab_size, (self.seq_len,), dtype=torch.long)
+                    data = torch.randint(0, self.vocab_size, (self.seq_len+1,), dtype=torch.long)
+                    x = data[:self.seq_len]
+                    y = data[1:self.seq_len+1]
                     return {"input_ids": x, "labels": y}
             self.train_dataset = MockDataset(config.mock_data_num_samples, config.T)
             train_sampler = DistributedSampler(self.train_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=True)
