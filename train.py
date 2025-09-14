@@ -298,7 +298,7 @@ class Trainer:
             # 4) print
             t1 = time.time()
             dt = t1 - t0 # time difference in seconds
-            tokens_processed = self.train_dataset.batch_size * self.config.T * self.training_info["grad_accum_steps"] * self.dp_world_size
+            tokens_processed = self.config.B * self.config.T * self.training_info["grad_accum_steps"] * self.dp_world_size
             tokens_per_sec = tokens_processed / dt
             if self.master_process:
                 tqdm.write(f"step {step:5d} | loss: {self.one_step_results['loss'].item():.6f} | lr {self.one_step_results['lr']:.4e} | grad norm: {self.one_step_results['grad_norm']:.4f} | dt: {dt*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
