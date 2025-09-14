@@ -37,7 +37,7 @@ class TrainerConfig:
     log_dir = "./log/"
     dataset_path = "../data/fineweb-edu-sample-10BT/"
     use_mock_data = False
-    mock_data_num_samples = 128
+    mock_data_num_samples = 1280
     tokenizer_name = "gpt2"
     total_batch_size = 524288 # 2**19, ~0.5M, in number of tokens, range 0.5~4M, usually 1~2M
     B = 8 # micro batch size per device
@@ -90,28 +90,12 @@ class Trainer:
                     y = torch.randint(0, self.vocab_size, (self.seq_len,), dtype=torch.long)
                     return {"input_ids": x, "labels": y}
             self.train_dataset = MockDataset(config.mock_data_num_samples, config.T)
-            train_sampler = DistributedSampler(
-                self.train_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=True
-            )
-            self.train_loader = DataLoader(
-                self.train_dataset,
-                batch_size=config.B,
-                sampler=train_sampler,
-                num_workers=0,
-                pin_memory=True,
-            )
+            train_sampler = DistributedSampler(self.train_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=True)
+            self.train_loader = DataLoader(self.train_dataset, batch_size=config.B, sampler=train_sampler, num_workers=0, pin_memory=True)
             if config.do_val:
                 self.val_dataset = MockDataset(config.mock_data_num_samples // 10, config.T)
-                val_sampler = DistributedSampler(
-                    self.val_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=False
-                )
-                self.val_loader = DataLoader(
-                    self.val_dataset,
-                    batch_size=config.B,
-                    sampler=val_sampler,
-                    num_workers=0,
-                    pin_memory=True,
-                )
+                val_sampler = DistributedSampler(self.val_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=False)
+                self.val_loader = DataLoader(self.val_dataset, batch_size=config.B, sampler=val_sampler, num_workers=0, pin_memory=True)
             else:
                 self.val_dataset = self.val_loader = None
         else:
