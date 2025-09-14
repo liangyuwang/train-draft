@@ -37,7 +37,7 @@ class TrainerConfig:
     log_dir = "./log/"
     dataset_path = "../data/fineweb-edu-sample-10BT/"
     use_mock_data = False
-    mock_data_num_samples = 128
+    mock_data_num_samples = 1280
     tokenizer_name = "gpt2"
     total_batch_size = 524288 # 2**19, ~0.5M, in number of tokens, range 0.5~4M, usually 1~2M
     B = 8 # micro batch size per device
@@ -90,28 +90,12 @@ class Trainer:
                     y = torch.randint(0, self.vocab_size, (self.seq_len,), dtype=torch.long)
                     return {"input_ids": x, "labels": y}
             self.train_dataset = MockDataset(config.mock_data_num_samples, config.T)
-            train_sampler = DistributedSampler(
-                self.train_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=True
-            )
-            self.train_loader = DataLoader(
-                self.train_dataset,
-                batch_size=config.B,
-                sampler=train_sampler,
-                num_workers=0,
-                pin_memory=True,
-            )
+            train_sampler = DistributedSampler(self.train_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=True)
+            self.train_loader = DataLoader(self.train_dataset, batch_size=config.B, sampler=train_sampler, num_workers=0, pin_memory=True)
             if config.do_val:
                 self.val_dataset = MockDataset(config.mock_data_num_samples // 10, config.T)
-                val_sampler = DistributedSampler(
-                    self.val_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=False
-                )
-                self.val_loader = DataLoader(
-                    self.val_dataset,
-                    batch_size=config.B,
-                    sampler=val_sampler,
-                    num_workers=0,
-                    pin_memory=True,
-                )
+                val_sampler = DistributedSampler(self.val_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=False)
+                self.val_loader = DataLoader(self.val_dataset, batch_size=config.B, sampler=val_sampler, num_workers=0, pin_memory=True)
             else:
                 self.val_dataset = self.val_loader = None
         else:
@@ -159,7 +143,7 @@ class Trainer:
         assert config.total_batch_size % (config.B * config.T * self.dp_world_size) == 0, "make sure total_batch_size is divisible by B * T * dp_world_size"
         self._init_dataset(config)
         self.training_info = get_training_info(
-            config.B * len(self.train_loader), config.T, config.total_batch_size, config.B, self.dp_world_size, config.max_steps, config.max_epochs)
+            len(self.train_dataset), config.T, config.total_batch_size, config.B, self.dp_world_size, config.max_steps, config.max_epochs)
         if self.master_process:
             print(f"The training process will train {self.training_info['epochs']} epochs, {self.training_info['max_steps']} steps.")
             print(f"=> calculated gradient accumulation steps: {self.training_info['grad_accum_steps']}")
@@ -300,6 +284,8 @@ class Trainer:
                 with self.profiler.record_function("training_step"):
                     self._one_training_step(self.config, step)
                 self.profiler.step()
+            else:
+                self._one_training_step(self.config, step)
             torch.cuda.synchronize()
             # 2) eval
             if not self.config.debug and self.config.do_val and (step % self.config.val_every_steps == 0 or last_step):
@@ -314,7 +300,7 @@ class Trainer:
             # 4) print
             t1 = time.time()
             dt = t1 - t0 # time difference in seconds
-            tokens_processed = self.train_dataset.batch_size * self.config.T * self.training_info["grad_accum_steps"] * self.dp_world_size
+            tokens_processed = self.config.B * self.config.T * self.training_info["grad_accum_steps"] * self.dp_world_size
             tokens_per_sec = tokens_processed / dt
             if self.master_process:
                 tqdm.write(f"step {step:5d} | loss: {self.one_step_results['loss'].item():.6f} | lr {self.one_step_results['lr']:.4e} | grad norm: {self.one_step_results['grad_norm']:.4f} | dt: {dt*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
