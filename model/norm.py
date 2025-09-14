@@ -4,10 +4,11 @@ import torch.nn as nn
 from .config import GPTConfig
 
 class LayerNorm(nn.Module):
-    def __init__(self, hidden_size: int, eps: float = 1e-6):
+    def __init__(self, config: GPTConfig):
         super().__init__()
-        self.variance_epsilon = eps
-        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.variance_epsilon = 1e-6
+        self.hidden_size = config.hidden_size
+        self.weight = nn.Parameter(torch.ones(self.hidden_size))
 
     def forward(self, x: torch.Tensor):
         input_dtype = x.dtype
