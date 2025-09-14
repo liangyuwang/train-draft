@@ -86,8 +86,9 @@ class Trainer:
                 def __len__(self):
                     return self.length
                 def __getitem__(self, idx):
-                    x = torch.randint(0, self.vocab_size, (self.seq_len,), dtype=torch.long)
-                    y = torch.randint(0, self.vocab_size, (self.seq_len,), dtype=torch.long)
+                    data = torch.randint(0, self.vocab_size, (self.seq_len+1,), dtype=torch.long)
+                    x = data[:self.seq_len]
+                    y = data[1:self.seq_len+1]
                     return {"input_ids": x, "labels": y}
             self.train_dataset = MockDataset(config.mock_data_num_samples, config.T)
             train_sampler = DistributedSampler(self.train_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=True)
@@ -127,7 +128,7 @@ class Trainer:
             model = torch.compile(model)
         model = model.to(f'cuda:{self.dp_local_rank}')
         #TODO: Here ZeRO-1 only need 'reduce' not 'all-reduce', we can develop a custom DDP for ZeRO-1
-        self.model = DDP(model, process_group=self.dp_group)
+        self.model = DDP(model, process_group=self.dp_group, find_unused_parameters=True, gradient_as_bucket_view=True)
         self.raw_model = self.model.module
 
     def _init_optimizer(self, config: TrainerConfig):
