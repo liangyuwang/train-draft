@@ -72,20 +72,22 @@ def rope_impl(q, k, position_ids, rope_theta=10000.0):
 
 def gqa_impl(k, v, num_key_value_heads, num_attention_heads):
     """
-    Grouped Query Attention (GQA) implementation.
-    Expands key and value tensors to match the number of query heads.
+    k,v: (B, H_kv, T, D)
+    return: (B, H_q, T, D)
     """
     if num_key_value_heads == num_attention_heads:
         return k, v
     elif num_key_value_heads == 1:
-        k = k.expand(-1, -1, num_attention_heads, -1)
-        v = v.expand(-1, -1, num_attention_heads, -1)
+        k = k.expand(-1, num_attention_heads, -1, -1)
+        v = v.expand(-1, num_attention_heads, -1, -1)
         return k, v
     elif num_attention_heads % num_key_value_heads == 0:
         repeat_factor = num_attention_heads // num_key_value_heads
-        k = k.unsqueeze(2).expand(-1, -1, repeat_factor, -1, -1).reshape(k.size(0), k.size(1), -1, k.size(-1))
-        v = v.unsqueeze(2).expand(-1, -1, repeat_factor, -1, -1).reshape(v.size(0), v.size(1), -1, v.size(-1))
+        k = k.repeat_interleave(repeat_factor, dim=1)
+        v = v.repeat_interleave(repeat_factor, dim=1)
         return k, v
+    else:
+        raise ValueError("num_attention_heads must be divisible by num_key_value_heads")
 
 
 class Attention(nn.Module):
