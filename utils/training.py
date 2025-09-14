@@ -23,7 +23,7 @@ def get_training_args():
     parser.add_argument("--grad_clip_value", type=float, default=1.0, help="Gradient clipping value")
     parser.add_argument("--warmup_steps", type=int, default=1000, help="Number of warmup steps")
     parser.add_argument("--max_steps", type=int, default=None, help="Maximum number of training steps")
-    parser.add_argument("--max_epochs", type=int, default=1, help="Maximum number of epochs")
+    parser.add_argument("--max_epochs", type=int, default=None, help="Maximum number of epochs")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--do_val", action="store_true", help="Enable validation")
     parser.add_argument("--val_every_steps", type=int, default=250, help="Validation frequency in steps")
