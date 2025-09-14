@@ -72,20 +72,22 @@ def rope_impl(q, k, position_ids, rope_theta=10000.0):
 
 def gqa_impl(k, v, num_key_value_heads, num_attention_heads):
     """
-    Grouped Query Attention (GQA) implementation.
-    Expands key and value tensors to match the number of query heads.
+    k,v: (B, H_kv, T, D)
+    return: (B, H_q, T, D)
     """
     if num_key_value_heads == num_attention_heads:
         return k, v
     elif num_key_value_heads == 1:
-        k = k.expand(-1, -1, num_attention_heads, -1)
-        v = v.expand(-1, -1, num_attention_heads, -1)
+        k = k.expand(-1, num_attention_heads, -1, -1)
+        v = v.expand(-1, num_attention_heads, -1, -1)
         return k, v
     elif num_attention_heads % num_key_value_heads == 0:
         repeat_factor = num_attention_heads // num_key_value_heads
-        k = k.unsqueeze(2).expand(-1, -1, repeat_factor, -1, -1).reshape(k.size(0), k.size(1), -1, k.size(-1))
-        v = v.unsqueeze(2).expand(-1, -1, repeat_factor, -1, -1).reshape(v.size(0), v.size(1), -1, v.size(-1))
+        k = k.repeat_interleave(repeat_factor, dim=1)
+        v = v.repeat_interleave(repeat_factor, dim=1)
         return k, v
+    else:
+        raise ValueError("num_attention_heads must be divisible by num_key_value_heads")
 
 
 class Attention(nn.Module):
@@ -96,28 +98,29 @@ class Attention(nn.Module):
         self.num_attention_heads = config.num_attention_heads
         self.num_key_value_heads = config.num_key_value_heads
         self.head_dim = config.hidden_size // config.num_attention_heads
+        self.n_embd = config.hidden_size
+        self.dropout = config.dropout
+        self.pos = None
         # key, query, value projections for all heads, but in a batch        
         self.q_proj = nn.Linear(config.hidden_size, config.num_attention_heads * self.head_dim, bias=False)
         self.k_proj = nn.Linear(config.hidden_size, config.num_key_value_heads * self.head_dim, bias=False)
         self.v_proj = nn.Linear(config.hidden_size, config.num_key_value_heads * self.head_dim, bias=False)
         # output projection
         self.c_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
-        # regularization
-        self.n_embd = config.hidden_size
-        self.pos = None
 
     def forward(self, x: torch.Tensor):
         B, T, C = x.size()
         q, k, v = self.q_proj(x), self.k_proj(x), self.v_proj(x) # (B, T, n_embd)
-        k = k.view(B, T, self.num_attention_heads, C // self.num_attention_heads) # (B, T, nh, hs)
-        q = q.view(B, T, self.num_key_value_heads, C // self.num_key_value_heads) # (B, T, nh, hs)
-        v = v.view(B, T, self.num_key_value_heads, C // self.num_key_value_heads) # (B, T, nh, hs)
+        q = q.view(B, T, self.num_attention_heads, self.head_dim).transpose(-2, -3) # (B, nh, T, hs)
+        k = k.view(B, T, self.num_key_value_heads, self.head_dim).transpose(-2, -3) # (B, nh, T, hs)
+        v = v.view(B, T, self.num_key_value_heads, self.head_dim).transpose(-2, -3) # (B, nh, T, hs)
         k, v = gqa_impl(k, v, self.num_key_value_heads, self.num_attention_heads)
         if self.pos is None:
             self.pos = torch.arange(T, device=x.device).unsqueeze(0)
         q, k = rope_impl(q, k, self.pos)
-        y = F.scaled_dot_product_attention(q, k, v, dropout=self.training, dropout_p=False)
-        y = y.view(B, T, C)
+        dropout_p = self.dropout if self.training else 0.0
+        y = F.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=dropout_p, is_causal=True)
+        y = y.transpose(-2, -3).view(B, T, C)
         # output projection
         y = self.c_proj(y)
         return y
