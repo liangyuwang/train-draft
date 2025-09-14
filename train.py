@@ -36,6 +36,8 @@ class TrainerConfig:
     seed = 1337
     log_dir = "./log/"
     dataset_path = "../data/fineweb-edu-sample-10BT/"
+    use_mock_data = False
+    mock_data_num_samples = 128
     tokenizer_name = "gpt2"
     total_batch_size = 524288 # 2**19, ~0.5M, in number of tokens, range 0.5~4M, usually 1~2M
     B = 8 # micro batch size per device
@@ -74,21 +76,60 @@ class Trainer:
         self.master_process = self.dp_rank == 0 # this process will do logging, checkpointing etc.
         
     def _init_dataset(self, config: TrainerConfig):
-        self.train_dataset = SlidingTokenDataset(
-            dataset_path=config.dataset_path, split="train", split_rate=config.split_rate, 
-            seq_len=config.T, stride=config.T//2, batch_size=config.B*self.dp_world_size, 
-            seed=config.seed, rank=self.dp_rank, world_size=self.dp_world_size)
-        train_sampler = DistributedSampler(self.train_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=False)
-        self.train_loader = DataLoader(self.train_dataset, batch_size=config.B, shuffle=False, sampler=train_sampler, num_workers=0, pin_memory=True)
-        if config.do_val:
-            self.val_dataset = SlidingTokenDataset(
-                dataset_path=config.dataset_path, split="validation", split_rate=config.split_rate, 
+        if config.use_mock_data:
+            from torch.utils.data import Dataset
+            class MockDataset(Dataset):
+                def __init__(self, length: int, seq_len: int, vocab_size: int = 50304):
+                    self.length = length
+                    self.seq_len = seq_len
+                    self.vocab_size = vocab_size
+                def __len__(self):
+                    return self.length
+                def __getitem__(self, idx):
+                    x = torch.randint(0, self.vocab_size, (self.seq_len,), dtype=torch.long)
+                    y = torch.randint(0, self.vocab_size, (self.seq_len,), dtype=torch.long)
+                    return {"input_ids": x, "labels": y}
+            self.train_dataset = MockDataset(config.mock_data_num_samples, config.T)
+            train_sampler = DistributedSampler(
+                self.train_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=True
+            )
+            self.train_loader = DataLoader(
+                self.train_dataset,
+                batch_size=config.B,
+                sampler=train_sampler,
+                num_workers=0,
+                pin_memory=True,
+            )
+            if config.do_val:
+                self.val_dataset = MockDataset(config.mock_data_num_samples // 10, config.T)
+                val_sampler = DistributedSampler(
+                    self.val_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=False
+                )
+                self.val_loader = DataLoader(
+                    self.val_dataset,
+                    batch_size=config.B,
+                    sampler=val_sampler,
+                    num_workers=0,
+                    pin_memory=True,
+                )
+            else:
+                self.val_dataset = self.val_loader = None
+        else:
+            self.train_dataset = SlidingTokenDataset(
+                dataset_path=config.dataset_path, split="train", split_rate=config.split_rate, 
                 seq_len=config.T, stride=config.T//2, batch_size=config.B*self.dp_world_size, 
                 seed=config.seed, rank=self.dp_rank, world_size=self.dp_world_size)
-            val_sampler = DistributedSampler(self.val_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=False)
-            self.val_loader = DataLoader(self.val_dataset, batch_size=config.B, shuffle=False, sampler=val_sampler, num_workers=0, pin_memory=True)
-        else:
-            self.val_dataset = self.val_loader = None
+            train_sampler = DistributedSampler(self.train_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=False)
+            self.train_loader = DataLoader(self.train_dataset, batch_size=config.B, shuffle=False, sampler=train_sampler, num_workers=0, pin_memory=True)
+            if config.do_val:
+                self.val_dataset = SlidingTokenDataset(
+                    dataset_path=config.dataset_path, split="validation", split_rate=config.split_rate, 
+                    seq_len=config.T, stride=config.T//2, batch_size=config.B*self.dp_world_size, 
+                    seed=config.seed, rank=self.dp_rank, world_size=self.dp_world_size)
+                val_sampler = DistributedSampler(self.val_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=False)
+                self.val_loader = DataLoader(self.val_dataset, batch_size=config.B, shuffle=False, sampler=val_sampler, num_workers=0, pin_memory=True)
+            else:
+                self.val_dataset = self.val_loader = None
 
     def _init_model(self, config: TrainerConfig, model_config: GPTConfig = None):
         torch.set_float32_matmul_precision('high')
