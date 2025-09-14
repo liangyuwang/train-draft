@@ -21,8 +21,7 @@ from distributed import DistributedOptimizer
 from utils import (
     get_training_args, 
     get_training_info,
-    get_dense_model_params,
-    get_moe_model_params,
+    get_model_params,
 )
 
 """
@@ -96,7 +95,7 @@ class Trainer:
         self.tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name)
         self.model_config = GPTConfig() if model_config is None else model_config
         model = GPT(self.model_config)
-        params_config = get_moe_model_params(model) if self.model_config.use_moe_ratio > 0 else get_dense_model_params(model)
+        params_config = get_model_params(self.model_config)
         if self.master_process:
             print(f"Params config: {params_config}")
         if config.use_compile and hasattr(torch, 'compile'):
