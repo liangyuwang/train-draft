@@ -109,8 +109,8 @@ class Attention(nn.Module):
     def forward(self, x: torch.Tensor):
         B, T, C = x.size()
         q, k, v = self.q_proj(x), self.k_proj(x), self.v_proj(x) # (B, T, n_embd)
-        k = k.view(B, T, self.num_attention_heads, C // self.num_attention_heads) # (B, T, nh, hs)
-        q = q.view(B, T, self.num_key_value_heads, C // self.num_key_value_heads) # (B, T, nh, hs)
+        q = q.view(B, T, self.num_attention_heads, C // self.num_attention_heads) # (B, T, nh, hs)
+        k = k.view(B, T, self.num_key_value_heads, C // self.num_key_value_heads) # (B, T, nh, hs)
         v = v.view(B, T, self.num_key_value_heads, C // self.num_key_value_heads) # (B, T, nh, hs)
         k, v = gqa_impl(k, v, self.num_key_value_heads, self.num_attention_heads)
         if self.pos is None:
