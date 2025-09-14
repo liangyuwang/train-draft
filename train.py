@@ -205,7 +205,7 @@ class Trainer:
             param_group['lr'] = lr
         self.optimizer.step()
         self.one_step_results["lr"] = lr
-        self.one_step_results["loss"] = loss_accum
+        self.one_step_results["loss"] = loss_accum.item()
         self.one_step_results["grad_norm"] = norm
     
     def _resume_from_checkpoint(self, steps_per_epoch):
