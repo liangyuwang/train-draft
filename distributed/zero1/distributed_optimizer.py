@@ -22,6 +22,7 @@ class DistributedOptimizer:
         if self.num_parts is None:
             self.num_parts = self.world_size
         self._apply_zero1()
+        dist.barrier(process_group)
 
     def _apply_zero1(self):
         """
@@ -80,22 +81,23 @@ class DistributedOptimizer:
         TODO: make broadcast overlap with optimizer step or next forward.
         """
         out = self.optimizer.step(*args, **kwargs)
-        self._broadcast_owned_params()
+        if self.world_size > 1:
+            self._broadcast_all_params_from_owners()
         return out
 
     @torch.no_grad()
-    def _broadcast_owned_params(self):
+    def _broadcast_all_params_from_owners(self):
         """
-        Broadcast parameters owned by this rank to all ranks in `self.group`.
+        Every rank must call broadcast on the same sequence of tensors with the same src.
+        We iterate over the stable-ordered self.tensor_dict to ensure identical ordering.
         """
-        owned = []
-        for key, p in self.tensor_dict.items():
-            if self.part_assignment[key] == self.rank:
-                owned.append(p)
-        if not owned:
+        # Early exit for single-process runs
+        if self.world_size == 1:
             return
-        for p in owned:
-            dist.broadcast(p.data, src=self.rank, group=self.process_group)
+        for key, p in self.tensor_dict.items():
+            src = self.part_assignment[key]
+            # All ranks call broadcast for this tensor, using the same src
+            dist.broadcast(p.data, src=src, group=self.process_group)
 
 
 def partition_tensors(
