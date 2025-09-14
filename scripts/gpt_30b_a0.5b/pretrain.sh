@@ -48,9 +48,10 @@ MODEL_ARGS="\
   --hidden_size 768 \
   --intermediate_size 3072 \
   --dropout 0.0 \
+  --tied_lm_head \
   --use_moe_ratio 1.0 \
-  --num_expert 512 \
-  --top_k 4 \
+  --num_experts 16 \
+  --num_experts_per_tok 2 \
   --moe_intermediate_size 1024 \
 "
 
