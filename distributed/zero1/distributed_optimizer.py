@@ -41,8 +41,6 @@ class DistributedOptimizer:
             self.tensor_dict,
             ranks_map=self.ranks_map,
             num_parts=self.num_parts,
-            evenness_priority=self.evenness_priority,
-            malloc=False,
             verbose=self.verbose,
         )
         self.part_assignment = part_assignment
