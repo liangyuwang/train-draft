@@ -95,7 +95,7 @@ class DistributedOptimizer:
         if not owned:
             return
         for p in owned:
-            dist.broadcast(p.data, src=self.rank, group=self.group)
+            dist.broadcast(p.data, src=self.rank, group=self.process_group)
 
 
 def partition_tensors(
