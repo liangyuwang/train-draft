@@ -117,14 +117,25 @@ def moe_group_experts_forward(x_list, experts):
     return y_list
 
 
-def group_gemm(x_list, w_list):
-    """ Grouped GEMM with DeepGemm """
-    y_list = []
-    for x, w in zip(x_list, w_list):
-        if x.numel() == 0:
-            y_list.append(torch.zeros((0, w.size(0)), dtype=x.dtype, device=x.device))
+def group_gemm(a_list, b_list, trans_b: bool = True):
+    """
+    Grouped GEMM over lists:
+      - a_list: list of [n_i, in_features] tensors (tokens routed to expert i)
+      - b_list: list of [out_features, in_features] weight tensors (expert i)
+    Returns:
+      - outs: list of [n_i, out_features] tensors, same list order as inputs
+    Note:
+      - Default computes a @ b.T (trans_b=True), matching torch.nn.Linear(weight=[out,in]).
+      - Handles empty experts (n_i == 0).
+    """
+    assert len(a_list) == len(b_list)
+    outs = []
+    #TODO: use deepgemm for grouped gemm
+    for a, b in zip(a_list, b_list):
+        if a.numel() == 0:
+            # produce an empty [0, out_features] tensor on the same device/dtype as a
+            out_features = b.shape[0] if trans_b else b.shape[1]
+            outs.append(a.new_zeros((0, out_features)))
         else:
-            import deepgemm     #TODO: enable DeepGemm
-            y = deepgemm.linear(x, w.t())
-            y_list.append(y)
-    return y_list
+            outs.append(a @ (b.transpose(-1, -2) if trans_b else b))
+    return outs
