@@ -128,7 +128,7 @@ class Trainer:
             model = torch.compile(model)
         model = model.to(f'cuda:{self.dp_local_rank}')
         #TODO: Here ZeRO-1 only need 'reduce' not 'all-reduce', we can develop a custom DDP for ZeRO-1
-        self.model = DDP(model, process_group=self.dp_group)
+        self.model = DDP(model, process_group=self.dp_group, find_unused_parameters=True, gradient_as_bucket_view=True)
         self.raw_model = self.model.module
 
     def _init_optimizer(self, config: TrainerConfig):
