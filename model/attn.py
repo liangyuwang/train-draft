@@ -109,15 +109,16 @@ class Attention(nn.Module):
     def forward(self, x: torch.Tensor):
         B, T, C = x.size()
         q, k, v = self.q_proj(x), self.k_proj(x), self.v_proj(x) # (B, T, n_embd)
-        q = q.view(B, T, self.num_attention_heads, self.head_dim) # (B, T, nh, hs)
-        k = k.view(B, T, self.num_key_value_heads, self.head_dim) # (B, T, nh, hs)
-        v = v.view(B, T, self.num_key_value_heads, self.head_dim) # (B, T, nh, hs)
+        q = q.view(B, T, self.num_attention_heads, self.head_dim).transpose(-2, -3) # (B, nh, T, hs)
+        k = k.view(B, T, self.num_key_value_heads, self.head_dim).transpose(-2, -3) # (B, nh, T, hs)
+        v = v.view(B, T, self.num_key_value_heads, self.head_dim).transpose(-2, -3) # (B, nh, T, hs)
         k, v = gqa_impl(k, v, self.num_key_value_heads, self.num_attention_heads)
         if self.pos is None:
             self.pos = torch.arange(T, device=x.device).unsqueeze(0)
         q, k = rope_impl(q, k, self.pos)
-        y = F.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout, is_causal=True)
-        y = y.view(B, T, C)
+        dropout_p = self.dropout if self.training else 0.0
+        y = F.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=dropout_p, is_causal=True)
+        y = y.transpose(-2, -3).view(B, T, C)
         # output projection
         y = self.c_proj(y)
         return y
