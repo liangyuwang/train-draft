@@ -70,7 +70,7 @@ class Trainer:
         self.dp_rank = int(os.environ['RANK'])
         self.dp_local_rank = int(os.environ['LOCAL_RANK'])
         self.dp_world_size = int(os.environ['WORLD_SIZE'])
-        self.dp_group = dist.new_group(backend='nccl', rank=self.dp_rank, world_size=self.dp_world_size)
+        self.dp_group = dist.new_group(backend='nccl', ranks=list(range(self.dp_world_size)))
         device = f'cuda:{self.dp_local_rank}'
         torch.cuda.set_device(device)
         self.master_process = self.dp_rank == 0 # this process will do logging, checkpointing etc.
