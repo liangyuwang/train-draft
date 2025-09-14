@@ -143,7 +143,7 @@ class Trainer:
         assert config.total_batch_size % (config.B * config.T * self.dp_world_size) == 0, "make sure total_batch_size is divisible by B * T * dp_world_size"
         self._init_dataset(config)
         self.training_info = get_training_info(
-            config.B * len(self.train_loader), config.T, config.total_batch_size, config.B, self.dp_world_size, config.max_steps, config.max_epochs)
+            len(self.train_dataset), config.T, config.total_batch_size, config.B, self.dp_world_size, config.max_steps, config.max_epochs)
         if self.master_process:
             print(f"The training process will train {self.training_info['epochs']} epochs, {self.training_info['max_steps']} steps.")
             print(f"=> calculated gradient accumulation steps: {self.training_info['grad_accum_steps']}")
