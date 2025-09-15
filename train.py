@@ -209,7 +209,7 @@ class Trainer:
         x, y = data_batch["input_ids"], data_batch["labels"]
         x, y = x.to(f'cuda:{self.dp_local_rank}'), y.to(f'cuda:{self.dp_local_rank}')
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            _, loss = self.model(x, y)
+            _, loss = self.model(x.reshape(x.shape[0],-1), y.reshape(y.shape[0],-1))
         loss = loss / self.training_info["grad_accum_steps"]
         loss.backward()
         return loss.detach()
