@@ -23,7 +23,7 @@ TRAINING_ARGS="\
   --dataset_path ../data/fineweb-edu-sample-10BT/ \
   --log_dir ./log \
   --tokenizer_name gpt2 \
-  --total_batch_size 524288 \
+  --total_batch_size 2097152 \
   --B $B \
   --T 4096 \
   --shift 1 \

@@ -24,7 +24,7 @@ TRAINING_ARGS="\
   --use_mock_data \
   --log_dir ./log \
   --tokenizer_name gpt2 \
-  --total_batch_size 524288 \
+  --total_batch_size 2097152 \
   --B $B \
   --T 4096 \
   --shift 1 \
@@ -35,8 +35,6 @@ TRAINING_ARGS="\
   --warmup_steps 1000 \
   --max_epochs 1 \
   --debug \
-  --do_val \
-  --val_every_steps 250 \
   --do_save \
   --save_every_steps 5000 \
 "
@@ -44,7 +42,7 @@ TRAINING_ARGS="\
 MODEL_ARGS="\
   --block_size 4096 \
   --vocab_size 151936 \
-  --num_layer 20 \
+  --num_layer 4 \
   --num_attention_heads 32 \
   --num_key_value_heads 4 \
   --hidden_size 768 \
@@ -52,9 +50,9 @@ MODEL_ARGS="\
   --tied_lm_head \
   --dropout 0.0 \
   --use_moe_ratio 1.0 \
-  --num_experts 16 \
+  --num_experts 8 \
   --num_experts_per_tok 2 \
-  --moe_intermediate_size 1024 \
+  --moe_intermediate_size 768 \
 "
 
 torchrun $DISTRIBUTED_ARGS train.py $TRAINING_ARGS $MODEL_ARGS
