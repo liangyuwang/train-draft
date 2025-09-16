@@ -37,68 +37,68 @@ class MoE(nn.Module):
         self.gate = nn.Linear(self.hidden_size, self.num_experts, bias=False)
         self.experts = nn.ModuleList([MLP(config, use_moe=True) for _ in range(self.num_experts)])
 
-    # def forward(self, x: torch.Tensor) -> torch.Tensor:
-    #     """ copied from https://github.com/huggingface/transformers/blob/v4.56.1/src/transformers/models/qwen3_moe/modeling_qwen3_moe.py """
-    #     B, N, d = x.shape
-    #     x = x.view(-1, d)
-    #     # router_logits: (batch * N, n_experts)
-    #     router_logits = self.gate(x)
-
-    #     routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
-    #     routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
-    #     # we cast back to the input dtype
-    #     routing_weights = routing_weights.to(x.dtype)
-    #     final_x = torch.zeros((B * N, d), dtype=x.dtype, device=x.device)
-
-    #     # One hot encode the selected experts to create an expert mask
-    #     # this will be used to easily index which expert is going to be sollicitated
-    #     expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
-
-    #     # Loop over all available experts in the model and perform the computation on each expert
-    #     expert_hit = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
-    #     for expert_idx in expert_hit:
-    #         expert_layer = self.experts[expert_idx]
-    #         idx, top_x = torch.where(expert_mask[expert_idx].squeeze(0))
-
-    #         # Index the correct hidden states and compute the expert hidden state for
-    #         # the current expert. We need to make sure to multiply the output hidden
-    #         # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
-    #         current_state = x[None, top_x].reshape(-1, d)
-    #         current_x = expert_layer(current_state) * routing_weights[top_x, idx, None]
-
-    #         # However `index_add_` only support torch tensors for indexing so we'll use
-    #         # the `top_x` tensor here.
-    #         final_x.index_add_(0, top_x, current_x.to(x.dtype))
-    #     final_x = final_x.reshape(B, N, d)
-    #     return final_x, router_logits
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """ MoE forward with async execution version """
+        """ copied from https://github.com/huggingface/transformers/blob/v4.56.1/src/transformers/models/qwen3_moe/modeling_qwen3_moe.py """
         B, N, d = x.shape
         x = x.view(-1, d)
+        # router_logits: (batch * N, n_experts)
         router_logits = self.gate(x)
 
         routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
         routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
+        # we cast back to the input dtype
         routing_weights = routing_weights.to(x.dtype)
         final_x = torch.zeros((B * N, d), dtype=x.dtype, device=x.device)
 
+        # One hot encode the selected experts to create an expert mask
+        # this will be used to easily index which expert is going to be sollicitated
         expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
+
+        # Loop over all available experts in the model and perform the computation on each expert
         expert_hit = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
-        streams, buffers, indices = [], [], []
         for expert_idx in expert_hit:
-            s = torch.cuda.Stream()
-            streams.append(s)
-            with torch.cuda.stream(s):
-                idx, top_x = torch.where(expert_mask[expert_idx].squeeze(0))
-                current_state = x[None, top_x].reshape(-1, d)
-                current_x = self.experts[expert_idx](current_state) * routing_weights[top_x, idx, None]
-                buffers.append(current_x.to(x.dtype))
-                indices.append(top_x)
-        for stream, buf, top_x in zip(streams, buffers, indices):
-            stream.synchronize()
-            final_x.index_add_(0, top_x, buf)
+            expert_layer = self.experts[expert_idx]
+            idx, top_x = torch.where(expert_mask[expert_idx].squeeze(0))
+
+            # Index the correct hidden states and compute the expert hidden state for
+            # the current expert. We need to make sure to multiply the output hidden
+            # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
+            current_state = x[None, top_x].reshape(-1, d)
+            current_x = expert_layer(current_state) * routing_weights[top_x, idx, None]
+
+            # However `index_add_` only support torch tensors for indexing so we'll use
+            # the `top_x` tensor here.
+            final_x.index_add_(0, top_x, current_x.to(x.dtype))
+        final_x = final_x.reshape(B, N, d)
         return final_x, router_logits
+
+    # def forward(self, x: torch.Tensor) -> torch.Tensor:
+    #     """ MoE forward with async execution version """
+    #     B, N, d = x.shape
+    #     x = x.view(-1, d)
+    #     router_logits = self.gate(x)
+
+    #     routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
+    #     routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
+    #     routing_weights = routing_weights.to(x.dtype)
+    #     final_x = torch.zeros((B * N, d), dtype=x.dtype, device=x.device)
+
+    #     expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
+    #     expert_hit = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
+    #     streams, buffers, indices = [], [], []
+    #     for expert_idx in expert_hit:
+    #         s = torch.cuda.Stream()
+    #         streams.append(s)
+    #         with torch.cuda.stream(s):
+    #             idx, top_x = torch.where(expert_mask[expert_idx].squeeze(0))
+    #             current_state = x[None, top_x].reshape(-1, d)
+    #             current_x = self.experts[expert_idx](current_state) * routing_weights[top_x, idx, None]
+    #             buffers.append(current_x.to(x.dtype))
+    #             indices.append(top_x)
+    #     for stream, buf, top_x in zip(streams, buffers, indices):
+    #         stream.synchronize()
+    #         final_x.index_add_(0, top_x, buf)
+    #     return final_x.reshape(B, N, d), router_logits
 
     # def forward(self, x: torch.Tensor) -> torch.Tensor:
     #     """ MoE forward with Grouped GEMM version """
