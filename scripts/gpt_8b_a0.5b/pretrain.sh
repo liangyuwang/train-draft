@@ -50,7 +50,7 @@ MODEL_ARGS="\
   --dropout 0.0 \
   --tied_lm_head \
   --use_moe_ratio 1.0 \
-  --num_experts 256 \
+  --num_experts 128 \
   --num_experts_per_tok 4 \
   --moe_intermediate_size 1024 \
 "

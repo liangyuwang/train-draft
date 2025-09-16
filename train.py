@@ -45,11 +45,11 @@ class TrainerConfig:
     T: int = 4096                   # sequence length
     shift: int = 1                  # next-token prediction if 1
     use_muon: bool = False
-    max_lr: float = 6e-4
-    min_lr: float | None = None     # will be set in __post_init__
+    max_lr: float = 4e-3
+    min_lr: float = 3e-5
     weight_decay: float = 0.1
     grad_clip_value: float = 1.0
-    warmup_steps: int = 1000
+    warmup_steps: int = 1000    # or 2000
     max_steps: int | None = None    # ~1 epoch if dataset is 10B tokens
     max_epochs: int = 1
     debug: bool = True
@@ -65,10 +65,6 @@ class TrainerConfig:
     steps_to_profile: list[int] = field(default_factory=lambda: [15, 20])
 
     def __post_init__(self):
-        # ensure min_lr depends on max_lr if not set
-        if self.min_lr is None:
-            self.min_lr = self.max_lr * 0.1
-
         # ensure split_rate depends on do_val if not set
         if self.split_rate is None:
             self.split_rate = 0.99 if self.do_val else 1.0
@@ -346,7 +342,7 @@ class Trainer:
                 x, y = batch["input_ids"], batch["labels"]
                 x, y = x.to(f'cuda:{self.dp_local_rank}'), y.to(f'cuda:{self.dp_local_rank}')
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                    logits, loss = self.model(x, y)
+                    logits, loss = self.model(x.reshape(x.shape[0],-1), y.reshape(y.shape[0],-1))
                 loss = loss / val_loss_steps
                 val_loss_accum += loss.detach()
         dist.all_reduce(val_loss_accum, op=dist.ReduceOp.AVG)
