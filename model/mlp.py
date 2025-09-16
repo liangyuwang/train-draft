@@ -98,7 +98,7 @@ class MoE(nn.Module):
         for stream, buf, top_x in zip(streams, buffers, indices):
             stream.synchronize()
             final_x.index_add_(0, top_x, buf)
-        return final_x, router_logits
+        return final_x.reshape(B, N, d), router_logits
 
     # def forward(self, x: torch.Tensor) -> torch.Tensor:
     #     """ MoE forward with Grouped GEMM version """
