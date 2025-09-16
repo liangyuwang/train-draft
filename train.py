@@ -181,7 +181,8 @@ class Trainer:
             f"lr{config.max_lr}_"
             f"B{config.total_batch_size}_"
             f"T{config.T}_"
-            f"DP{self.dp_world_size}"
+            f"DP{self.dp_world_size}_"
+            f"Muon{self.config.use_muon}"
         )
         os.makedirs(self.log_dir, exist_ok=True)
         self.log_file = os.path.join(self.log_dir, f"log.txt")
