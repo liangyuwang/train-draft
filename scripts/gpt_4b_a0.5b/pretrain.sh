@@ -27,8 +27,8 @@ TRAINING_ARGS="\
   --B $B \
   --T 4096 \
   --shift 1 \
-  --max_lr 6e-4 \
-  --min_lr 6e-5 \
+  --max_lr 2e-3 \
+  --min_lr 3e-5 \
   --weight_decay 0.1 \
   --grad_clip_value 1.0 \
   --warmup_steps 1000 \
@@ -50,8 +50,8 @@ MODEL_ARGS="\
   --dropout 0.0 \
   --tied_lm_head \
   --use_moe_ratio 1.0 \
-  --num_experts 16 \
-  --num_experts_per_tok 2 \
+  --num_experts 64 \
+  --num_experts_per_tok 4 \
   --moe_intermediate_size 1024 \
 "
 

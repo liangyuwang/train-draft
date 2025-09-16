@@ -3,7 +3,7 @@ import math
 import glob
 from tqdm.auto import tqdm
 from itertools import cycle, islice
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
 import time
 import torch
@@ -34,35 +34,40 @@ Features:
 
 @dataclass
 class TrainerConfig:
-    seed = 1337
-    log_dir = "./log/"
-    dataset_path = "../data/fineweb-edu-sample-10BT/"
-    use_mock_data = False
-    mock_data_num_samples = 1280
-    tokenizer_name = "gpt2"
-    total_batch_size = 524288 # 2**19, ~0.5M, in number of tokens, range 0.5~4M, usually 1~2M
-    B = 8 # micro batch size per device
-    T = 4096 # sequence length
-    shift = 1   # shift = 1 means next-token-prediction, > 1 means multi-token-prediction
-    use_muon = False
-    max_lr = 6e-4
-    min_lr = max_lr * 0.1
-    weight_decay=0.1
-    grad_clip_value = 1.0
-    warmup_steps = 1000     # 1000 steps as llama
-    max_steps = None # 19073 steps is ~1 epoch, if data is 10B tokens and batch size 0.5M tokens
-    max_epochs = 1
-    debug = True
-    do_val = False
-    val_every_steps = 250
-    do_inference = True
-    split_rate=0.99 if do_val else 1.0
-    do_save = True
-    save_every_steps = 5000
-    shift_every_steps = None
-    use_compile = False
-    use_profiler = False
-    steps_to_profile = [15, 20] # steps to profile
+    seed: int = 1337
+    log_dir: str = "./log/"
+    dataset_path: str = "../data/fineweb-edu-sample-10BT/"
+    use_mock_data: bool = False
+    mock_data_num_samples: int = 1280
+    tokenizer_name: str = "gpt2"
+    total_batch_size: int = 524288  # 2**19, ~0.5M tokens
+    B: int = 8                      # micro batch size per device
+    T: int = 4096                   # sequence length
+    shift: int = 1                  # next-token prediction if 1
+    use_muon: bool = False
+    max_lr: float = 4e-3
+    min_lr: float = 3e-5
+    weight_decay: float = 0.1
+    grad_clip_value: float = 1.0
+    warmup_steps: int = 1000    # or 2000
+    max_steps: int | None = None    # ~1 epoch if dataset is 10B tokens
+    max_epochs: int = 1
+    debug: bool = True
+    do_val: bool = False
+    val_every_steps: int = 250
+    do_inference: bool = True
+    split_rate: float | None = None # will be set in __post_init__
+    do_save: bool = True
+    save_every_steps: int = 5000
+    shift_every_steps: int | None = None
+    use_compile: bool = False
+    use_profiler: bool = False
+    steps_to_profile: list[int] = field(default_factory=lambda: [15, 20])
+
+    def __post_init__(self):
+        # ensure split_rate depends on do_val if not set
+        if self.split_rate is None:
+            self.split_rate = 0.99 if self.do_val else 1.0
 
 
 class Trainer:
@@ -157,6 +162,9 @@ class Trainer:
         self.config = config
         self._init_setup(config)
         assert config.total_batch_size % (config.B * config.T * self.dp_world_size) == 0, "make sure total_batch_size is divisible by B * T * dp_world_size"
+        if self.master_process:
+            print(f"Trainer config: {config}")
+            print(f"Model config: {model_config}")
         self._init_dataset(config)
         self.training_info = get_training_info(
             len(self.train_dataset), config.T, config.total_batch_size, config.B, self.dp_world_size, config.max_steps, config.max_epochs)
@@ -173,7 +181,8 @@ class Trainer:
             f"lr{config.max_lr}_"
             f"B{config.total_batch_size}_"
             f"T{config.T}_"
-            f"DP{self.dp_world_size}"
+            f"DP{self.dp_world_size}_"
+            f"Muon{self.config.use_muon}"
         )
         os.makedirs(self.log_dir, exist_ok=True)
         self.log_file = os.path.join(self.log_dir, f"log.txt")
@@ -197,7 +206,7 @@ class Trainer:
         x, y = data_batch["input_ids"], data_batch["labels"]
         x, y = x.to(f'cuda:{self.dp_local_rank}'), y.to(f'cuda:{self.dp_local_rank}')
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            _, loss = self.model(x, y)
+            _, loss = self.model(x.reshape(x.shape[0],-1), y.reshape(y.shape[0],-1))
         loss = loss / self.training_info["grad_accum_steps"]
         loss.backward()
         return loss.detach()
@@ -334,7 +343,7 @@ class Trainer:
                 x, y = batch["input_ids"], batch["labels"]
                 x, y = x.to(f'cuda:{self.dp_local_rank}'), y.to(f'cuda:{self.dp_local_rank}')
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                    logits, loss = self.model(x, y)
+                    logits, loss = self.model(x.reshape(x.shape[0],-1), y.reshape(y.shape[0],-1))
                 loss = loss / val_loss_steps
                 val_loss_accum += loss.detach()
         dist.all_reduce(val_loss_accum, op=dist.ReduceOp.AVG)
