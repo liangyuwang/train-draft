@@ -27,8 +27,8 @@ TRAINING_ARGS="\
   --B $B \
   --T 4096 \
   --shift 1 \
-  --max_lr 6e-4 \
-  --min_lr 6e-5 \
+  --max_lr 2e-3 \
+  --min_lr 3e-5 \
   --weight_decay 0.1 \
   --grad_clip_value 1.0 \
   --warmup_steps 1000 \
