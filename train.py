@@ -342,7 +342,7 @@ class Trainer:
                 x, y = batch["input_ids"], batch["labels"]
                 x, y = x.to(f'cuda:{self.dp_local_rank}'), y.to(f'cuda:{self.dp_local_rank}')
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                    logits, loss = self.model(x, y)
+                    logits, loss = self.model(x.reshape(x.shape[0],-1), y.reshape(y.shape[0],-1))
                 loss = loss / val_loss_steps
                 val_loss_accum += loss.detach()
         dist.all_reduce(val_loss_accum, op=dist.ReduceOp.AVG)
