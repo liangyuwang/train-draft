@@ -11,7 +11,18 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 import torch.nn.functional as F
 import torch.distributed as dist
-from torch.distributed.checkpoint import save_state_dict, load_state_dict
+from torch.distributed.checkpoint import state_dict_saver, state_dict_loader
+from torch.distributed.checkpoint.filesystem import FileSystemWriter, FileSystemReader
+from torch.distributed.checkpoint.state_dict import get_state_dict as dcp_get_state_dict
+from torch.distributed.checkpoint.optimizer import optim_state_dict as dcp_optim_state_dict
+from torch.distributed.checkpoint.state_dict import (
+    get_state_dict as dcp_get_state_dict,
+    load_state_dict as dcp_load_state_dict,
+)
+from torch.distributed.checkpoint.optimizer import (
+    optim_state_dict as dcp_optim_state_dict,
+    load_sharded_optimizer_state_dict as dcp_load_sharded_optim_state_dict,
+)
 from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import AutoTokenizer, set_seed
 
@@ -157,6 +168,7 @@ class Trainer:
             optimizer=self.optimizer,
             process_group=self.dp_group,
         )
+        self.raw_optimizer = self.optimizer.optimizer
 
     def __init__(self, config: TrainerConfig, model_config: GPTConfig = None):
         self.config = config
@@ -243,15 +255,15 @@ class Trainer:
         meta_path = f"{ckpt_prefix}_meta.pt"
         meta = torch.load(meta_path, map_location=f'cuda:{self.dp_local_rank}')
         # 1) model
-        load_state_dict(
+        state_dict_loader.load(
             state_dict=self.raw_model.state_dict(),
-            storage_reader=f"{ckpt_prefix}_model.pt",
+            storage_reader=FileSystemReader(f"{ckpt_prefix}_model.pt"),
         )
         # 2) optimizer
-        load_state_dict(
-            state_dict=self.optimizer.state_dict(),
-            storage_reader=f"{ckpt_prefix}_opt.pt",
-        )
+        named_model_sd = dcp_get_state_dict(self.raw_model)
+        named_optim_sd = dcp_optim_state_dict(self.raw_optimizer, named_model_sd)
+        dcp_load_state_dict(named_optim_sd, storage_reader=FileSystemReader(f"{ckpt_prefix}_opt.pt"))
+        dcp_load_sharded_optim_state_dict(self.raw_optimizer, named_optim_sd)
         # 3) RNG
         rng = meta.get('rng_state', None)
         if rng:
@@ -357,13 +369,15 @@ class Trainer:
         next_step = (step if step is not None else 0) + 1
         sampler_epoch_next = next_step // steps_per_epoch
         sampler_iter_idx_next = (next_step % steps_per_epoch) * self.training_info['grad_accum_steps']
-        save_state_dict(
+        state_dict_saver.save(
             state_dict=self.raw_model.state_dict(),
-            storage_writer=f"{checkpoint_path}_model.pt",
+            storage_writer=FileSystemWriter(f"{checkpoint_path}_model.pt"),
         )
-        save_state_dict(
-            state_dict=self.optimizer.state_dict(),
-            storage_writer=f"{checkpoint_path}_opt.pt",
+        named_model_sd = dcp_get_state_dict(self.raw_model)
+        named_optim_sd = dcp_optim_state_dict(self.raw_optimizer, named_model_sd)
+        state_dict_saver.save(
+            state_dict=named_optim_sd,
+            storage_writer=FileSystemWriter(f"{checkpoint_path}_opt.pt"),
         )
         rng_state = {
             'torch': torch.get_rng_state(),
