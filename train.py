@@ -13,16 +13,6 @@ import torch.nn.functional as F
 import torch.distributed as dist
 from torch.distributed.checkpoint import state_dict_saver, state_dict_loader
 from torch.distributed.checkpoint.filesystem import FileSystemWriter, FileSystemReader
-from torch.distributed.checkpoint.state_dict import get_state_dict as dcp_get_state_dict
-from torch.distributed.checkpoint.optimizer import optim_state_dict as dcp_optim_state_dict
-from torch.distributed.checkpoint.state_dict import (
-    get_state_dict as dcp_get_state_dict,
-    load_state_dict as dcp_load_state_dict,
-)
-from torch.distributed.checkpoint.optimizer import (
-    optim_state_dict as dcp_optim_state_dict,
-    load_sharded_optimizer_state_dict as dcp_load_sharded_optim_state_dict,
-)
 from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import AutoTokenizer, set_seed
 
@@ -260,17 +250,16 @@ class Trainer:
             storage_reader=FileSystemReader(f"{ckpt_prefix}_model.pt"),
         )
         # 2) optimizer
-        named_model_sd = dcp_get_state_dict(self.raw_model)
-        named_optim_sd = dcp_optim_state_dict(self.raw_optimizer, named_model_sd)
-        dcp_load_state_dict(named_optim_sd, storage_reader=FileSystemReader(f"{ckpt_prefix}_opt.pt"))
-        dcp_load_sharded_optim_state_dict(self.raw_optimizer, named_optim_sd)
-        # 3) RNG
-        rng = meta.get('rng_state', None)
-        if rng:
-            torch.set_rng_state(rng['torch'])
-            torch.cuda.set_rng_state(rng['cuda'], self.dp_local_rank)
-            np.random.set_state(rng['numpy'])
-        # 4) dataset state
+        part_assignment = meta.get('opt_part_assignment', {})
+        self.optimizer.optimizer.param_groups = self.optimizer.orig_param_groups
+        self.optimizer.apply_zero1(part_assignment)
+        self.raw_optimizer = self.optimizer.optimizer
+        opt_state_placeholder = {f"optimizer/dp_rank{self.dp_rank}": self.raw_optimizer.state_dict()}
+        state_dict_loader.load(
+            state_dict=opt_state_placeholder,
+            storage_reader=FileSystemReader(f"{ckpt_prefix}_opt"),
+        )
+        # 3) dataset state
         data_state = meta.get('dataset_state', {})
         if data_state:
             self._set_dataset_state(self.train_dataset, data_state.get('train', None))
@@ -283,12 +272,18 @@ class Trainer:
             self.train_loader.sampler.set_epoch(epoch)
         if iter_idx > 0:
             self.train_loader_iter = enumerate(islice(self.train_loader, iter_idx, None), start=iter_idx)
-        # 5) next step 
+        # 4) next step 
         step = meta.get('step', None)
         self.start_step = (step + 1) if (step is not None) else 0
         if self.master_process:
             print(f"=> Resumed from {self.log_dir} | next_step={self.start_step}, "
                 f"sampler_epoch={epoch}, dataloader_iter_idx={iter_idx}")
+        # 5) RNG: finally load RNG state
+        rng = meta.get('rng_state', None)
+        if rng:
+            torch.set_rng_state(rng['torch'])
+            torch.cuda.set_rng_state(rng['cuda'], self.dp_local_rank)
+            np.random.set_state(rng['numpy'])
     
     def train(self):
         self.results = {}
@@ -373,11 +368,9 @@ class Trainer:
             state_dict=self.raw_model.state_dict(),
             storage_writer=FileSystemWriter(f"{checkpoint_path}_model.pt"),
         )
-        named_model_sd = dcp_get_state_dict(self.raw_model)
-        named_optim_sd = dcp_optim_state_dict(self.raw_optimizer, named_model_sd)
         state_dict_saver.save(
-            state_dict=named_optim_sd,
-            storage_writer=FileSystemWriter(f"{checkpoint_path}_opt.pt"),
+            state_dict={f"optimizer/dp_rank{self.dp_rank}": self.raw_optimizer.state_dict()},
+            storage_writer=FileSystemWriter(f"{checkpoint_path}_opt"),
         )
         rng_state = {
             'torch': torch.get_rng_state(),
@@ -393,6 +386,7 @@ class Trainer:
                 'dataset_state': {
                     'train': self._get_dataset_state(self.train_dataset),
                 },
+                'opt_part_assignment': self.optimizer.part_assignment,
                 'sampler_state': {
                     'epoch': sampler_epoch_next,
                     'iter_idx': sampler_iter_idx_next,

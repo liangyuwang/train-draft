@@ -21,10 +21,9 @@ class DistributedOptimizer:
         self.world_size = dist.get_world_size(process_group)
         if self.num_parts is None:
             self.num_parts = self.world_size
-        self._apply_zero1()
-        dist.barrier(process_group)
+        self.apply_zero1()
 
-    def _apply_zero1(self):
+    def apply_zero1(self, part_assignment = None):
         """
         Apply ZeRO-1 optimization by partitioning optimizer states across data parallel ranks.
         """
@@ -38,13 +37,15 @@ class DistributedOptimizer:
                     key = (g_idx, p_idx)
                     self.tensor_dict[key] = param
                     self._key_by_param_id[id(param)] = key
-        part_assignment, _ = partition_tensors(
-            self.tensor_dict,
-            ranks_map=self.ranks_map,
-            num_parts=self.num_parts,
-            verbose=self.verbose,
-        )
+        if part_assignment == None:
+            part_assignment, _ = partition_tensors(
+                self.tensor_dict,
+                ranks_map=self.ranks_map,
+                num_parts=self.num_parts,
+                verbose=self.verbose,
+            )
         self.part_assignment = part_assignment
+        self.orig_param_groups = self.optimizer.param_groups
         for g_idx, group in enumerate(self.optimizer.param_groups):
             new_params = []
             for p_idx, param in enumerate(group["params"]):
@@ -55,6 +56,7 @@ class DistributedOptimizer:
                 if self.rank == part:
                     new_params.append(param)
             group["params"] = new_params
+        dist.barrier(self.process_group)
 
     def __getattr__(self, name):
         return getattr(self.optimizer, name)
