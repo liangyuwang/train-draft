@@ -260,18 +260,12 @@ class Trainer:
             storage_reader=FileSystemReader(f"{ckpt_prefix}_opt"),
         )
         # 3) dataset state
-        data_state = meta.get('dataset_state', {})
-        if data_state:
-            self._set_dataset_state(self.train_dataset, data_state.get('train', None))
-            if self.val_dataset is not None:
-                self._set_dataset_state(self.val_dataset, data_state.get('val', None))
         sampler_state = meta.get('sampler_state', {})
         epoch = sampler_state.get('epoch', 0)
         iter_idx = sampler_state.get('iter_idx', 0)
         if hasattr(self, 'train_sampler') and self.train_loader.sampler is not None:
             self.train_loader.sampler.set_epoch(epoch)
-        if iter_idx > 0:
-            self.train_loader_iter = enumerate(islice(self.train_loader, iter_idx, None), start=iter_idx)
+        self.train_loader_iter = enumerate(islice(self.train_loader, iter_idx, None), start=iter_idx)
         # 4) next step 
         step = meta.get('step', None)
         self.start_step = (step + 1) if (step is not None) else 0
@@ -281,9 +275,11 @@ class Trainer:
         # 5) RNG: finally load RNG state
         rng = meta.get('rng_state', None)
         if rng:
-            torch.set_rng_state(rng['torch'])
-            torch.cuda.set_rng_state(rng['cuda'], self.dp_local_rank)
+            torch.set_rng_state(rng['torch'].to(torch.uint8).cpu())
+            torch.cuda.set_rng_state(rng['cuda'].to(torch.uint8).cpu(), self.dp_local_rank)
             np.random.set_state(rng['numpy'])
+        dist.barrier(self.dp_group)
+        torch.cuda.synchronize()
     
     def train(self):
         self.results = {}
@@ -383,9 +379,9 @@ class Trainer:
                 'model_config': self.raw_model.config,
                 'step': step,
                 'this_step_results': self.one_step_results,
-                'dataset_state': {
-                    'train': self._get_dataset_state(self.train_dataset),
-                },
+                # 'dataset_state': {
+                #     'train': self._get_dataset_state(self.train_dataset),
+                # },
                 'opt_part_assignment': self.optimizer.part_assignment,
                 'sampler_state': {
                     'epoch': sampler_epoch_next,
