@@ -120,7 +120,7 @@ class Attention(nn.Module):
         q, k = rope_impl(q, k, self.pos)
         dropout_p = self.dropout if self.training else 0.0
         y = F.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=dropout_p, is_causal=True)
-        y = y.transpose(-2, -3).view(B, T, C)
+        y = y.transpose(-2, -3).reshape(B, T, C)
         # output projection
         y = self.c_proj(y)
         return y

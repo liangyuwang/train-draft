@@ -21,20 +21,20 @@ DISTRIBUTED_ARGS="\
 TRAINING_ARGS="\
   --seed 1337 \
   --dataset_path ../data/fineweb-edu-sample-10BT/ \
+  --use_mock_data \
   --log_dir ./log \
   --tokenizer_name gpt2 \
   --total_batch_size 2097152 \
   --B $B \
   --T 4096 \
   --shift 1 \
-  --max_lr 2e-3 \
-  --min_lr 3e-5 \
+  --max_lr 6e-4 \
+  --min_lr 6e-5 \
   --weight_decay 0.1 \
   --grad_clip_value 1.0 \
   --warmup_steps 1000 \
   --max_epochs 1 \
-  --do_val \
-  --val_every_steps 250 \
+  --debug \
   --do_save \
   --save_every_steps 5000 \
 "
@@ -42,17 +42,17 @@ TRAINING_ARGS="\
 MODEL_ARGS="\
   --block_size 4096 \
   --vocab_size 151936 \
-  --num_layer 24 \
+  --num_layer 4 \
   --num_attention_heads 32 \
   --num_key_value_heads 4 \
   --hidden_size 768 \
   --intermediate_size 3072 \
-  --dropout 0.0 \
   --tied_lm_head \
+  --dropout 0.0 \
   --use_moe_ratio 1.0 \
-  --num_experts 512 \
-  --num_experts_per_tok 4 \
-  --moe_intermediate_size 1024 \
+  --num_experts 8 \
+  --num_experts_per_tok 2 \
+  --moe_intermediate_size 768 \
 "
 
 torchrun $DISTRIBUTED_ARGS train.py $TRAINING_ARGS $MODEL_ARGS
