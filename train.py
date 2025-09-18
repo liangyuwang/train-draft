@@ -250,10 +250,6 @@ class Trainer:
             storage_reader=FileSystemReader(f"{ckpt_prefix}_model.pt"),
         )
         # 2) optimizer
-        part_assignment = meta.get('opt_part_assignment', {})
-        self.optimizer.optimizer.param_groups = self.optimizer.orig_param_groups
-        self.optimizer.apply_zero1(part_assignment)
-        self.raw_optimizer = self.optimizer.optimizer
         opt_state_placeholder = {f"optimizer/dp_rank{self.dp_rank}": self.raw_optimizer.state_dict()}
         state_dict_loader.load(
             state_dict=opt_state_placeholder,
@@ -303,7 +299,9 @@ class Trainer:
             self.profiler.start()
         else:
             self.profiler = None
-        for step in tqdm(range(self.start_step, self.training_info["max_steps"]), desc="Train", disable=(self.dp_rank != 0)):
+        for step in tqdm(range(self.start_step, self.training_info["max_steps"]), 
+                        initial=self.start_step, total=self.training_info["max_steps"], 
+                        desc="Train", disable=(self.dp_rank != 0)):
             self.one_step_results = {}
             t0 = time.time()
             last_step = (step == self.training_info["max_steps"] - 1)

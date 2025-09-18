@@ -45,7 +45,6 @@ class DistributedOptimizer:
                 verbose=self.verbose,
             )
         self.part_assignment = part_assignment
-        self.orig_param_groups = self.optimizer.param_groups
         for g_idx, group in enumerate(self.optimizer.param_groups):
             new_params = []
             for p_idx, param in enumerate(group["params"]):
