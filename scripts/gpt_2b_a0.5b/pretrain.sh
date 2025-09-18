@@ -38,8 +38,6 @@ TRAINING_ARGS="\
   --grad_clip_value 1.0 \
   --warmup_steps 1000 \
   --max_epochs 1 \
-  --do_val \
-  --val_every_steps 250 \
   --do_save \
   --save_every_steps 500 \
 "
