@@ -9,6 +9,11 @@ NODE_RANK=0
 MASTER_ADDR="localhost"
 MASTER_PORT=29500
 B=8
+USE_MUON=0
+
+if [ $USE_MUON -eq 1 ]; then
+  unset CUBLAS_WORKSPACE_CONFIG
+fi
 
 DISTRIBUTED_ARGS="\
   --nnodes=$NUM_NODES \
@@ -36,8 +41,11 @@ TRAINING_ARGS="\
   --max_epochs 1 \
   --debug \
   --do_save \
-  --save_every_steps 5000 \
+  --save_every_steps 500 \
 "
+if [ $USE_MUON -eq 1 ]; then
+  TRAINING_ARGS="$TRAINING_ARGS --use_muon"
+fi
 
 MODEL_ARGS="\
   --block_size 4096 \
