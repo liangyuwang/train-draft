@@ -204,7 +204,6 @@ class Trainer:
             print(f"=> calculated tokens per step: {self.training_info['total_tokens_per_step']}")
         self._init_model(config, model_config)
         self._init_optimizer(config)
-        self._init_profiler(config)
         # create the log directory we will write checkpoints to and log to
         self.log_dir = os.path.join(
             config.log_dir,
@@ -314,6 +313,7 @@ class Trainer:
         self.train_loader_iter = enumerate(self.train_loader)
         self._resume_from_checkpoint(steps_per_epoch)
         # training loop
+        self._init_profiler(self.config)
         if self.profiler:
             self.profiler.start()
         for step in tqdm(range(self.start_step, self.training_info["max_steps"]), 
