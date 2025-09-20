@@ -20,6 +20,18 @@ class GPTConfig:
     num_experts_per_tok: Union[int, list] = 8  # could be a range from sparse to dense
     moe_intermediate_size: int = 256
 
-    # Shared Layers
+    # Shared GPT
     use_shared_layers: bool = False
     shared_layers: Union[list] = None  # None means all layers are shared
+
+    # Looped GPT
+    use_loop_mode: bool = False
+    looped_layers_range: Union[list] = None  # [start, end, step], None means all layers are looped
+    looped_layers_repeats: int = 1
+
+    def __post_init__(self):
+        if self.use_shared_layers and self.shared_layers is None:
+            self.shared_layers = list(range(self.num_layer))
+        if self.use_loop_mode and self.looped_layers_range is None:
+            self.looped_layers_range = [0, self.num_layer, 1]
+            self.looped_layers_repeats = self.num_layer
