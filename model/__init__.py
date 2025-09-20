@@ -1,5 +1,5 @@
 from .config import GPTConfig
-from .gpt import GPT
+from .gpt import GPT, LoopedGPT
 
 from .attn import Attention
 from .mlp import MLP, MoE

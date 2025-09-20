@@ -34,7 +34,7 @@ class MoE(nn.Module):
         self.top_k = top_k if top_k is not None else config.num_experts_per_tok
         self.hidden_size = config.hidden_size
 
-        self.gate = nn.Linear(self.hidden_size, self.num_experts, bias=False)
+        self.moe_gate = nn.Linear(self.hidden_size, self.num_experts, bias=False)
         self.experts = nn.ModuleList([MLP(config, use_moe=True) for _ in range(self.num_experts)])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -42,7 +42,7 @@ class MoE(nn.Module):
         B, N, d = x.shape
         x = x.view(-1, d)
         # router_logits: (batch * N, n_experts)
-        router_logits = self.gate(x)
+        router_logits = self.moe_gate(x)
 
         routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
         routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
@@ -76,7 +76,7 @@ class MoE(nn.Module):
     #     """ MoE forward with async execution version """
     #     B, N, d = x.shape
     #     x = x.view(-1, d)
-    #     router_logits = self.gate(x)
+    #     router_logits = self.moe_gate(x)
 
     #     routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
     #     routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
@@ -105,7 +105,7 @@ class MoE(nn.Module):
     #     B, N, d = x.shape
     #     x = x.view(-1, d)
     #     # router_logits: (batch * N, n_experts)
-    #     router_logits = self.gate(x)
+    #     router_logits = self.moe_gate(x)
 
     #     routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
     #     routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
