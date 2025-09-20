@@ -19,3 +19,7 @@ class GPTConfig:
     num_experts: int = 128
     num_experts_per_tok: Union[int, list] = 8  # could be a range from sparse to dense
     moe_intermediate_size: int = 256
+
+    # Shared Layers
+    use_shared_layers: bool = False
+    shared_layers: Union[list] = None  # None means all layers are shared
