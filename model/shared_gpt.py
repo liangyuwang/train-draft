@@ -39,7 +39,7 @@ class SharedGPT(GPT, nn.Module):
         - Memory: fewer unique parameter sets are stored, reducing model size.
         - Compute: every layer is still executed, so FLOPs remain unchanged.
         """
-        super().__init__()
+        nn.Module.__init__(self)
         self.config = config
         self.pos = None
         self.shared_layers = config.shared_layers
