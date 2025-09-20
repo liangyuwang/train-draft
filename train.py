@@ -2,6 +2,7 @@ import os
 import math
 import glob
 from tqdm.auto import tqdm
+from contextlib import contextmanager
 from itertools import cycle, islice
 from dataclasses import dataclass, field
 import numpy as np
@@ -11,7 +12,8 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 import torch.nn.functional as F
 import torch.distributed as dist
-from torch.distributed.checkpoint import save_state_dict, load_state_dict
+from torch.distributed.checkpoint import state_dict_saver, state_dict_loader
+from torch.distributed.checkpoint.filesystem import FileSystemWriter, FileSystemReader
 from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import AutoTokenizer, set_seed
 
@@ -23,6 +25,7 @@ from utils import (
     get_training_args, 
     get_training_info,
     get_model_params,
+    compute_mfu_from_profiler,
 )
 
 """
@@ -157,6 +160,33 @@ class Trainer:
             optimizer=self.optimizer,
             process_group=self.dp_group,
         )
+        self.raw_optimizer = self.optimizer.optimizer
+    
+    def _init_profiler(self, config: TrainerConfig):
+        @contextmanager
+        def dummy_record_function(name: str):
+            yield
+        assert self.config.steps_to_profile[0] >= 1, "steps_to_profile[0] should be >= 1"
+        if config.use_profiler:
+            trace_handler = (
+                torch.profiler.tensorboard_trace_handler(f"{self.log_dir}/rank{self.dp_rank}")
+                if self.master_process else None
+            )
+            self.profiler = torch.profiler.profile(
+                schedule=torch.profiler.schedule(
+                    wait=self.config.steps_to_profile[0]-1,
+                    warmup=1,
+                    active=self.config.steps_to_profile[1]-self.config.steps_to_profile[0],
+                    repeat=1),
+                on_trace_ready=trace_handler,
+                record_shapes=True,
+                with_stack=True,
+                with_flops=True,
+                activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+            )
+        else:
+            self.profiler = None
+        self.profiler_record_fn = torch.profiler.record_function if config.use_profiler else dummy_record_function
 
     def __init__(self, config: TrainerConfig, model_config: GPTConfig = None):
         self.config = config
@@ -205,10 +235,12 @@ class Trainer:
     def _one_training_micro_step(self, config: TrainerConfig, micro_step: int, data_batch: dict):
         x, y = data_batch["input_ids"], data_batch["labels"]
         x, y = x.to(f'cuda:{self.dp_local_rank}'), y.to(f'cuda:{self.dp_local_rank}')
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            _, loss = self.model(x.reshape(x.shape[0],-1), y.reshape(y.shape[0],-1))
+        with self.profiler_record_fn("forward"):
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                _, loss = self.model(x.reshape(x.shape[0],-1), y.reshape(y.shape[0],-1))
         loss = loss / self.training_info["grad_accum_steps"]
-        loss.backward()
+        with self.profiler_record_fn("backward"):
+            loss.backward()
         return loss.detach()
 
     def _one_training_step(self, config: TrainerConfig, step: int):
@@ -243,40 +275,37 @@ class Trainer:
         meta_path = f"{ckpt_prefix}_meta.pt"
         meta = torch.load(meta_path, map_location=f'cuda:{self.dp_local_rank}')
         # 1) model
-        load_state_dict(
+        state_dict_loader.load(
             state_dict=self.raw_model.state_dict(),
-            storage_reader=f"{ckpt_prefix}_model.pt",
+            storage_reader=FileSystemReader(f"{ckpt_prefix}_model.pt"),
         )
         # 2) optimizer
-        load_state_dict(
-            state_dict=self.optimizer.state_dict(),
-            storage_reader=f"{ckpt_prefix}_opt.pt",
+        opt_state_placeholder = {f"optimizer/dp_rank{self.dp_rank}": self.raw_optimizer.state_dict()}
+        state_dict_loader.load(
+            state_dict=opt_state_placeholder,
+            storage_reader=FileSystemReader(f"{ckpt_prefix}_opt"),
         )
-        # 3) RNG
-        rng = meta.get('rng_state', None)
-        if rng:
-            torch.set_rng_state(rng['torch'])
-            torch.cuda.set_rng_state(rng['cuda'], self.dp_local_rank)
-            np.random.set_state(rng['numpy'])
-        # 4) dataset state
-        data_state = meta.get('dataset_state', {})
-        if data_state:
-            self._set_dataset_state(self.train_dataset, data_state.get('train', None))
-            if self.val_dataset is not None:
-                self._set_dataset_state(self.val_dataset, data_state.get('val', None))
+        # 3) dataset state
         sampler_state = meta.get('sampler_state', {})
         epoch = sampler_state.get('epoch', 0)
         iter_idx = sampler_state.get('iter_idx', 0)
         if hasattr(self, 'train_sampler') and self.train_loader.sampler is not None:
             self.train_loader.sampler.set_epoch(epoch)
-        if iter_idx > 0:
-            self.train_loader_iter = enumerate(islice(self.train_loader, iter_idx, None), start=iter_idx)
-        # 5) next step 
+        self.train_loader_iter = enumerate(islice(self.train_loader, iter_idx, None), start=iter_idx)
+        # 4) next step 
         step = meta.get('step', None)
         self.start_step = (step + 1) if (step is not None) else 0
         if self.master_process:
             print(f"=> Resumed from {self.log_dir} | next_step={self.start_step}, "
                 f"sampler_epoch={epoch}, dataloader_iter_idx={iter_idx}")
+        # 5) RNG: finally load RNG state
+        rng = meta.get('rng_state', None)
+        if rng:
+            torch.set_rng_state(rng['torch'].to(torch.uint8).cpu())
+            torch.cuda.set_rng_state(rng['cuda'].to(torch.uint8).cpu(), self.dp_local_rank)
+            np.random.set_state(rng['numpy'])
+        dist.barrier(self.dp_group)
+        torch.cuda.synchronize()
     
     def train(self):
         self.results = {}
@@ -284,34 +313,25 @@ class Trainer:
         self.train_loader_iter = enumerate(self.train_loader)
         self._resume_from_checkpoint(steps_per_epoch)
         # training loop
-        if self.config.use_profiler:
-            trace_handler = (
-                torch.profiler.tensorboard_trace_handler(f"{self.log_dir}/rank{self.dp_rank}")
-                if self.master_process else None
-            )
-            self.profiler = torch.profiler.profile(
-                schedule=torch.profiler.schedule(wait=self.config.steps_to_profile[0], warmup=1, active=3, repeat=1),
-                on_trace_ready=trace_handler,
-                record_shapes=True,
-                with_stack=True,
-                with_flops=True,
-                activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
-            )
+        self._init_profiler(self.config)
+        if self.profiler:
             self.profiler.start()
-        else:
-            self.profiler = None
-        for step in tqdm(range(self.start_step, self.training_info["max_steps"]), desc="Train", disable=(self.dp_rank != 0)):
+        for step in tqdm(range(self.start_step, self.training_info["max_steps"]), 
+                        initial=self.start_step, total=self.training_info["max_steps"], 
+                        desc="Train", disable=(self.dp_rank != 0)):
             self.one_step_results = {}
             t0 = time.time()
             last_step = (step == self.training_info["max_steps"] - 1)
             # 1) train
-            if self.profiler:
-                with self.profiler.record_function("training_step"):
-                    self._one_training_step(self.config, step)
-                self.profiler.step()
-            else:
+            with self.profiler_record_fn("training_step"):
                 self._one_training_step(self.config, step)
             torch.cuda.synchronize()
+            if self.profiler:
+                self.profiler.step()
+                if step in self.config.steps_to_profile:
+                    mfu, actual, peak = compute_mfu_from_profiler(self.profiler, dtype="bf16")
+                    if self.master_process:
+                        tqdm.write(f"MFU: {mfu*100:.2f}% | Actual {actual/1e12:.2f} TFLOPs | Peak {peak/1e12:.1f} TFLOPs")
             # 2) eval
             if not self.config.debug and self.config.do_val and (step % self.config.val_every_steps == 0 or last_step):
                 self.eval()
@@ -357,13 +377,13 @@ class Trainer:
         next_step = (step if step is not None else 0) + 1
         sampler_epoch_next = next_step // steps_per_epoch
         sampler_iter_idx_next = (next_step % steps_per_epoch) * self.training_info['grad_accum_steps']
-        save_state_dict(
+        state_dict_saver.save(
             state_dict=self.raw_model.state_dict(),
-            storage_writer=f"{checkpoint_path}_model.pt",
+            storage_writer=FileSystemWriter(f"{checkpoint_path}_model.pt"),
         )
-        save_state_dict(
-            state_dict=self.optimizer.state_dict(),
-            storage_writer=f"{checkpoint_path}_opt.pt",
+        state_dict_saver.save(
+            state_dict={f"optimizer/dp_rank{self.dp_rank}": self.raw_optimizer.state_dict()},
+            storage_writer=FileSystemWriter(f"{checkpoint_path}_opt"),
         )
         rng_state = {
             'torch': torch.get_rng_state(),
@@ -376,9 +396,10 @@ class Trainer:
                 'model_config': self.raw_model.config,
                 'step': step,
                 'this_step_results': self.one_step_results,
-                'dataset_state': {
-                    'train': self._get_dataset_state(self.train_dataset),
-                },
+                # 'dataset_state': {
+                #     'train': self._get_dataset_state(self.train_dataset),
+                # },
+                'opt_part_assignment': self.optimizer.part_assignment,
                 'sampler_state': {
                     'epoch': sampler_epoch_next,
                     'iter_idx': sampler_iter_idx_next,
