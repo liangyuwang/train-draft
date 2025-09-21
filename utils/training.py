@@ -51,6 +51,11 @@ def get_training_args():
     parser.add_argument("--num_experts", type=int, default=128, help="Number of experts in MoE")
     parser.add_argument("--num_experts_per_tok", type=int, default=8, help="Top-k experts to use in MoE")
     parser.add_argument("--moe_intermediate_size", type=int, default=256, help="Intermediate size for MoE layers")
+    parser.add_argument("--use_shared_layers", action="store_true", help="Use shared MoE model")
+    parser.add_argument("--shared_layers", type=int, nargs='+', default=None, help="Indices of layers to share in shared MoE model")
+    parser.add_argument("--use_looped_layers", action="store_true", help="Use looped MoE model")
+    parser.add_argument("--looped_layers_range", type=int, nargs='+', default=None, help="Range [start, end, step] for looped layers")
+    parser.add_argument("--looped_layers_repeats", type=int, default=1, help="Number of repeats for looped layers")
     args = parser.parse_args()
     return args
 

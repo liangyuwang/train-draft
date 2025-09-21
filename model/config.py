@@ -25,13 +25,13 @@ class GPTConfig:
     shared_layers: Union[list] = None  # None means all layers are shared
 
     # Looped GPT
-    use_loop_mode: bool = False
+    use_looped_layers: bool = False
     looped_layers_range: Union[list] = None  # [start, end, step], None means all layers are looped
     looped_layers_repeats: int = 1
 
     def __post_init__(self):
         if self.use_shared_layers and self.shared_layers is None:
             self.shared_layers = list(range(self.num_layer))
-        if self.use_loop_mode and self.looped_layers_range is None:
+        if self.use_looped_layers and self.looped_layers_range is None:
             self.looped_layers_range = [0, self.num_layer, 1]
             self.looped_layers_repeats = self.num_layer
