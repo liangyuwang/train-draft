@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from . import GPTConfig, Block, SharedGPT
+from . import GPTConfig, SharedGPT
 
 class LoopedGPT(SharedGPT):
 
