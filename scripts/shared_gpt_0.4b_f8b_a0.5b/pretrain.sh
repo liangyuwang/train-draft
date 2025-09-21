@@ -36,10 +36,11 @@ TRAINING_ARGS="\
   --min_lr 3e-5 \
   --weight_decay 0.1 \
   --grad_clip_value 1.0 \
-  --warmup_steps 1000 \
+  --warmup_steps 2000 \
   --max_epochs 1 \
   --do_save \
   --save_every_steps 500 \
+  --use_compile \
 "
 if [ $USE_MUON -eq 1 ]; then
   TRAINING_ARGS="$TRAINING_ARGS --use_muon"
@@ -60,6 +61,7 @@ MODEL_ARGS="\
   --num_experts_per_tok 4 \
   --moe_intermediate_size 1024 \
   --use_shared_layers \
+  --shared_layers 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 \
 "
 
 torchrun $DISTRIBUTED_ARGS train.py $TRAINING_ARGS $MODEL_ARGS

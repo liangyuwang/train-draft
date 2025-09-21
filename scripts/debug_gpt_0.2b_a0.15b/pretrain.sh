@@ -27,6 +27,7 @@ TRAINING_ARGS="\
   --seed 1337 \
   --dataset_path ../data/fineweb-edu-sample-10BT/ \
   --use_mock_data \
+  --mock_data_num_samples 12800 \
   --log_dir ./log \
   --tokenizer_name gpt2 \
   --total_batch_size 2097152 \
@@ -37,11 +38,12 @@ TRAINING_ARGS="\
   --min_lr 6e-5 \
   --weight_decay 0.1 \
   --grad_clip_value 1.0 \
-  --warmup_steps 1000 \
+  --warmup_steps 2000 \
   --max_epochs 1 \
   --debug \
   --do_save \
   --save_every_steps 500 \
+  --use_compile \
 "
 if [ $USE_MUON -eq 1 ]; then
   TRAINING_ARGS="$TRAINING_ARGS --use_muon"
