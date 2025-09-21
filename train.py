@@ -18,7 +18,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import AutoTokenizer, set_seed
 
 from stream_dataloader.dataset import SlidingTokenDataset
-from model import GPTConfig, GPT, LoopedGPT
+from model import GPTConfig, gpt
 from optimizer import MuonWithAuxAdam
 from distributed import DistributedOptimizer
 from utils import (
@@ -130,7 +130,7 @@ class Trainer:
         torch.set_float32_matmul_precision('high')
         self.tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name)
         self.model_config = GPTConfig() if model_config is None else model_config
-        model = GPT(self.model_config) if not self.model_config.use_shared_layers else LoopedGPT(self.model_config)
+        model = gpt(self.model_config)
         params_config = get_model_params(self.model_config)
         if self.master_process:
             print(f"Params config: {params_config}")
