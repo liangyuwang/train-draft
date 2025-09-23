@@ -142,155 +142,97 @@ def verify_results(
     return True
 
 
-def test_small():
-    """Test with small dimensions."""
-    print("\nRunning small test...")
-    batch_size, seq_len = 4, 32
-    hidden_dim, output_dim = 128, 128
-    num_experts = 4
-    group_size_m = 128
+def run_shape_test(
+    batch_size: int,
+    seq_len: int,
+    hidden_dim: int,
+    output_dim: int,
+    num_experts: int,
+    group_size_m: int = 128,
+    check_correctness: bool = True,
+) -> bool:
+    """Run a single shape test."""
+    print(f"\nRunning test: batch={batch_size}, seq={seq_len}, "
+          f"hidden={hidden_dim}, output={output_dim}, experts={num_experts}")
 
-    # Ensure total tokens is a multiple of group_size_m
-    tokens = batch_size * seq_len
-    if tokens % group_size_m != 0:
-        batch_size = group_size_m // seq_len
-        print(f"Adjusting batch_size to {batch_size} for alignment")
+    # Memory check
+    M_total = batch_size * seq_len
+    est_memory = (
+        M_total * hidden_dim     # inputs
+        + num_experts * output_dim * hidden_dim  # weights
+        + M_total * output_dim   # outputs
+    ) * 2  # dtype=bfloat16
+    est_memory_gb = est_memory / 1e9
+    total_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
+    if est_memory_gb > 0.8 * total_mem:
+        print(f"Skipping test - estimated {est_memory_gb:.2f} GB > 80% GPU memory")
+        return True
 
+    # Create test data
     inputs, expert_weights, expert_indices = create_aligned_test_data(
         batch_size, seq_len, hidden_dim, output_dim, num_experts, group_size_m
     )
 
-    # Run our implementation
-    output_triton = cg_grouped_gemm_forward(
-        inputs, expert_weights, expert_indices, group_size_m=group_size_m
-    )
-
-    # Run reference
-    output_reference = pytorch_reference(
-        inputs, expert_weights, expert_indices, group_size_m=group_size_m
-    )
-
-    # Verify results
-    is_correct = verify_results(output_triton, output_reference)
-    print(f"Small test {'passed' if is_correct else 'failed'}")
-
-    return is_correct
-
-
-def test_medium():
-    """Test with medium dimensions."""
-    print("\nRunning medium test...")
-    batch_size, seq_len = 16, 128
-    hidden_dim, output_dim = 1024, 1024
-    num_experts = 8
-    group_size_m = 128
-
-    inputs, expert_weights, expert_indices = create_aligned_test_data(
-        batch_size, seq_len, hidden_dim, output_dim, num_experts, group_size_m
-    )
-    print(f"Inputs shape: {inputs.shape}")
-    print(f"Expert weights shape: {expert_weights.shape}")
-    print(f"Expert indices shape: {expert_indices.shape}")
-
-    # Run our implementation
+    # Triton implementation
     print("Running Triton implementation...")
     output_triton = cg_grouped_gemm_forward(
         inputs, expert_weights, expert_indices, group_size_m=group_size_m
     )
-    print(f"Output shape: {output_triton.shape}")
-    print("Triton implementation finished")
 
-    # Run reference
-    print("Running reference implementation...")
-    output_reference = pytorch_reference(
-        inputs, expert_weights, expert_indices, group_size_m=group_size_m
-    )
-    print(f"Output shape: {output_reference.shape}")
-    print("Reference implementation finished")
-    # Verify results
-    print("Verifying results...")
-    is_correct = verify_results(output_triton, output_reference)
-    print(f"Medium test {'passed' if is_correct else 'failed'}")
-    print("Verification finished")
-    return is_correct
+    if check_correctness:
+        # PyTorch reference
+        print("Running PyTorch reference...")
+        output_reference = pytorch_reference(
+            inputs, expert_weights, expert_indices, group_size_m=group_size_m
+        )
 
-
-def test_large():
-    """Test with large dimensions (similar to paper configurations)."""
-    print("\nRunning large test...")
-
-    if (
-        not torch.cuda.is_available()
-        or torch.cuda.get_device_properties(0).total_memory < 20e9
-    ):
-        print("Skipping large test - insufficient GPU memory")
+        # Verify results
+        print("Verifying results...")
+        is_correct = verify_results(output_triton, output_reference)
+        print(f"Test {'passed' if is_correct else 'failed'}")
+        return is_correct
+    else:
+        print("Skipping correctness check (benchmark mode).")
         return True
 
-    batch_size, seq_len = 32, 128  # 4096 tokens
-    hidden_dim, output_dim = 4096, 7168
-    num_experts = 8
-    group_size_m = 128
 
-    inputs, expert_weights, expert_indices = create_aligned_test_data(
-        batch_size, seq_len, hidden_dim, output_dim, num_experts, group_size_m
+def benchmark_performance(
+    batch_size: int,
+    seq_len: int,
+    hidden_dim: int,
+    output_dim: int,
+    num_experts: int,
+    group_size_m: int = 128,
+    num_runs: int = 10,
+) -> bool:
+    """Benchmark Triton vs PyTorch for a given shape."""
+
+    print(
+        f"\n[Benchmark] batch={batch_size}, seq={seq_len}, "
+        f"hidden={hidden_dim}, output={output_dim}, experts={num_experts}"
     )
 
-    # Run our implementation
-    output_triton = cg_grouped_gemm_forward(
-        inputs, expert_weights, expert_indices, group_size_m=group_size_m
-    )
-
-    # Run reference
-    output_reference = pytorch_reference(
-        inputs, expert_weights, expert_indices, group_size_m=group_size_m
-    )
-
-    # Verify results
-    is_correct = verify_results(output_triton, output_reference)
-    print(f"Large test {'passed' if is_correct else 'failed'}")
-
-    return is_correct
-
-
-def benchmark_performance():
-    """Benchmark performance against PyTorch reference."""
-    print("\nRunning performance benchmark...")
-
-    # Use dimensions from the paper
-    batch_size, seq_len = 32, 1024  # 4096 tokens
-    hidden_dim, output_dim = 4096, 7168
-    num_experts = 8
-    group_size_m = 128
-
+    # Create test data
     inputs, expert_weights, expert_indices = create_aligned_test_data(
         batch_size, seq_len, hidden_dim, output_dim, num_experts, group_size_m
     )
 
     # Warmup
-    for _ in range(5):
-        output_triton = cg_grouped_gemm_forward(
-            inputs,
-            expert_weights,
-            expert_indices,
-            # use_tma=False,
-            group_size_m=group_size_m,
+    for _ in range(3):
+        _ = cg_grouped_gemm_forward(
+            inputs, expert_weights, expert_indices, group_size_m=group_size_m
         )
-        output_pytorch = pytorch_reference(
+        _ = pytorch_reference(
             inputs, expert_weights, expert_indices, group_size_m=group_size_m
         )
         torch.cuda.synchronize()
 
     # Benchmark Triton
-    num_runs = 10
     torch.cuda.synchronize()
     start = time.time()
     for _ in range(num_runs):
-        output_triton = cg_grouped_gemm_forward(
-            inputs,
-            expert_weights,
-            expert_indices,
-            # use_tma=False,
-            group_size_m=group_size_m,
+        _ = cg_grouped_gemm_forward(
+            inputs, expert_weights, expert_indices, group_size_m=group_size_m
         )
         torch.cuda.synchronize()
     triton_time = (time.time() - start) / num_runs * 1000  # ms
@@ -299,61 +241,77 @@ def benchmark_performance():
     torch.cuda.synchronize()
     start = time.time()
     for _ in range(num_runs):
-        output_pytorch = pytorch_reference(
+        _ = pytorch_reference(
             inputs, expert_weights, expert_indices, group_size_m=group_size_m
         )
         torch.cuda.synchronize()
     pytorch_time = (time.time() - start) / num_runs * 1000  # ms
 
-    # Calculate TFLOPS
+    # Compute FLOPs / TFLOPS
     M = batch_size * seq_len
-    flops = 2 * M * hidden_dim * output_dim  # Multiply-adds
+    flops = 2 * M * hidden_dim * output_dim
     triton_tflops = flops / (triton_time / 1000) / 1e12
     pytorch_tflops = flops / (pytorch_time / 1000) / 1e12
-
     speedup = pytorch_time / triton_time
 
-    print("\nPerformance Results:")
-    print(f"  Dimensions: {batch_size}x{seq_len}x{hidden_dim} -> {output_dim}")
+    # Print results
     print(f"  Triton: {triton_time:.2f} ms ({triton_tflops:.2f} TFLOPS)")
     print(f"  PyTorch: {pytorch_time:.2f} ms ({pytorch_tflops:.2f} TFLOPS)")
     print(f"  Speedup: {speedup:.2f}x")
 
-    # Format for paper table
+    # Print summary table
     num_groups = M // group_size_m
     m_per_group = M / num_groups
-    print("\ntable format:")
     print(
-        f"{num_experts}\t{num_groups}\t{int(m_per_group)}\t{hidden_dim}\t{output_dim}"
-        f"\t{int(triton_tflops)} TFLOPS\t{int(triton_time)} ms\t{speedup:.1f}x"
+        f"  table: {num_experts}\t{num_groups}\t{int(m_per_group)}\t"
+        f"{hidden_dim}\t{output_dim}\t"
+        f"{int(triton_tflops)} TFLOPS\t{int(triton_time)} ms\t{speedup:.1f}x"
     )
 
-    return (
-        speedup > 0.9
-    )  # Consider it a success if performance is at least 90% of PyTorch
+    return speedup > 0.9
+
 
 
 def run_all_tests():
-    """Run all tests and return overall success."""
-    test_results = []
-
-    # Check if CUDA is available
+    """Run multiple shape tests with a wide variety of configurations."""
     if not torch.cuda.is_available():
         print("CUDA not available, skipping tests")
         return False
 
-    # Run tests
-    test_results.append(test_small())
-    test_results.append(test_medium())
-    test_results.append(test_large())
-    test_results.append(benchmark_performance())
+    # Define a variety of shapes to test
+    shapes_to_test = [
+        # ---- Small ----
+        dict(batch_size=2, seq_len=16, hidden_dim=64, output_dim=64, num_experts=2),
+        dict(batch_size=4, seq_len=32, hidden_dim=128, output_dim=128, num_experts=4),
+        dict(batch_size=8, seq_len=64, hidden_dim=256, output_dim=256, num_experts=4),
 
-    # Overall success
-    all_passed = all(test_results)
-    print(
-        f"\nOverall test result: {'All tests passed!' if all_passed else 'Some tests failed!'}"
-    )
+        # ---- Medium ----
+        dict(batch_size=16, seq_len=128, hidden_dim=512, output_dim=512, num_experts=4),
+        dict(batch_size=16, seq_len=128, hidden_dim=1024, output_dim=1024, num_experts=8),
+        dict(batch_size=32, seq_len=128, hidden_dim=1024, output_dim=2048, num_experts=8),
+        dict(batch_size=32, seq_len=256, hidden_dim=2048, output_dim=2048, num_experts=8),
+        dict(batch_size=32, seq_len=256, hidden_dim=2048, output_dim=4096, num_experts=16),
 
+        # ---- Large ----
+        dict(batch_size=32, seq_len=512, hidden_dim=4096, output_dim=4096, num_experts=8),
+        dict(batch_size=32, seq_len=512, hidden_dim=4096, output_dim=7168, num_experts=8),
+        dict(batch_size=32, seq_len=1024, hidden_dim=4096, output_dim=7168, num_experts=8),
+        dict(batch_size=64, seq_len=1024, hidden_dim=4096, output_dim=7168, num_experts=16),
+
+        # ---- Extra Large ----
+        dict(batch_size=64, seq_len=2048, hidden_dim=4096, output_dim=4096, num_experts=16),
+        dict(batch_size=64, seq_len=2048, hidden_dim=8192, output_dim=8192, num_experts=16),
+        dict(batch_size=128, seq_len=1024, hidden_dim=8192, output_dim=8192, num_experts=32),
+    ]
+
+    results = []
+    for cfg in shapes_to_test:
+        results.append(run_shape_test(**cfg))
+        # Benchmark performance
+        results.append(benchmark_performance(**cfg))
+
+    all_passed = all(results)
+    print(f"\nOverall test result: {'All tests passed!' if all_passed else 'Some tests failed!'}")
     return all_passed
 
 
