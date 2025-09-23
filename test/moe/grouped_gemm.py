@@ -248,7 +248,7 @@ def benchmark_performance(
     pytorch_time = (time.time() - start) / num_runs * 1000  # ms
 
     # Compute FLOPs / TFLOPS
-    M = batch_size * seq_len
+    M = inputs.shape[0]
     flops = 2 * M * hidden_dim * output_dim
     triton_tflops = flops / (triton_time / 1000) / 1e12
     pytorch_tflops = flops / (pytorch_time / 1000) / 1e12
