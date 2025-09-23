@@ -125,17 +125,9 @@ def verify_results(
         max_diff = torch.max(abs_diff).item()
         mean_diff = torch.mean(abs_diff).item()
 
-        # Find location of maximum difference
-        flat_idx = torch.argmax(abs_diff.view(-1))
-        row = flat_idx // output_triton.shape[1]
-        col = flat_idx % output_triton.shape[1]
-
         print("Results do not match!")
         print(f"Max difference: {max_diff:.6f}")
         print(f"Mean difference: {mean_diff:.6f}")
-        print(f"Max difference at [{row}, {col}]")
-        print(f"Triton: {output_triton[row, col].item():.6f}")
-        print(f"Reference: {output_reference[row, col].item():.6f}")
 
         return False
 
