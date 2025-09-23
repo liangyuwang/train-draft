@@ -8,7 +8,7 @@ from typing import Tuple
 import torch
 
 from model.ops.grouped_gemm import cg_grouped_gemm
-from .grouped_gemm import create_aligned_test_data, pytorch_reference
+from grouped_gemm import create_aligned_test_data, pytorch_reference
 
 
 def run_forward_backward_test(
