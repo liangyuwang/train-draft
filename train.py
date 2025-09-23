@@ -166,17 +166,20 @@ class Trainer:
         @contextmanager
         def dummy_record_function(name: str):
             yield
+        def trace_handler(prof):
+            mfu, actual, peak = compute_mfu_from_profiler(prof, dtype="bf16")
+            if self.master_process:
+                print(f"MFU: {mfu*100:.2f}% | Actual {actual/1e12:.2f} TFLOPs | Peak {peak/1e12:.1f} TFLOPs")
+                prof.export_chrome_trace(f"{self.log_dir}/rank{self.dp_rank}_trace.json")
         assert self.config.steps_to_profile[0] >= 1, "steps_to_profile[0] should be >= 1"
         if config.use_profiler:
             self.profiler = torch.profiler.profile(
                 schedule=torch.profiler.schedule(
                     wait=self.config.steps_to_profile[0]-1,
                     warmup=1,
-                    active=self.config.steps_to_profile[1]-self.config.steps_to_profile[0],
+                    active=self.config.steps_to_profile[1]+1-self.config.steps_to_profile[0],
                     repeat=1),
-                on_trace_ready=lambda p: p.export_chrome_trace(
-                    f"{self.log_dir}/rank{self.dp_rank}_trace.json"
-                ) if self.master_process else None,
+                on_trace_ready=trace_handler,
                 record_shapes=True,
                 with_stack=True,
                 with_flops=True,

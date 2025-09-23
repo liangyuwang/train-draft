@@ -19,9 +19,8 @@ GPU_PEAK_FLOPS = {
 }
 
 
-def get_gpu_peak_flops(dtype="bf16"):
+def get_gpu_peak_flops(dtype="bf16", per_device=True):
     """Detect GPU type and return theoretical peak FLOPs/s (for all GPUs)."""
-    num_gpus = torch.cuda.device_count()
     gpu_name = torch.cuda.get_device_name(0)
     dtype = dtype.lower()
     peak = None
@@ -29,9 +28,10 @@ def get_gpu_peak_flops(dtype="bf16"):
         if k in gpu_name:
             peak = v.get(dtype, None)
             break
-    if peak is None:
-        raise ValueError(f"Unknown peak FLOPs for GPU {gpu_name} with dtype {dtype}")
-    return peak * num_gpus
+    if peak is None or peak == 0:
+        raise ValueError(f"Unknown or unsupported FLOPs for GPU {gpu_name} with dtype {dtype}")
+    num_gpus = torch.cuda.device_count()
+    return peak if per_device else peak * num_gpus
 
 def compute_mfu_from_profiler(prof, dtype="bf16", warmup_steps=0):
     """
@@ -45,9 +45,11 @@ def compute_mfu_from_profiler(prof, dtype="bf16", warmup_steps=0):
     events = prof.key_averages()
     if warmup_steps > 0:
         events = [evt for evt in events if evt.count > warmup_steps]
-    flops_total = sum([evt.flops for evt in events if evt.flops is not None])
-    time_total = sum([evt.self_cuda_time_total for evt in events]) / 1e6
+
+    flops_total = sum(getattr(evt, "flops", 0) or 0 for evt in events)
+    time_total = sum(getattr(evt, "device_time_total", 0) or 0 for evt in events) / 1e6  # seconds
+
     actual_flops_per_sec = flops_total / time_total if time_total > 0 else 0.0
-    peak_flops = get_gpu_peak_flops(dtype=dtype)
+    peak_flops = get_gpu_peak_flops(dtype=dtype, per_device=True)
     mfu = actual_flops_per_sec / peak_flops
     return mfu, actual_flops_per_sec, peak_flops
