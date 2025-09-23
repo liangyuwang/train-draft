@@ -302,6 +302,11 @@ def run_all_tests():
         dict(batch_size=64, seq_len=2048, hidden_dim=4096, output_dim=4096, num_experts=16),
         dict(batch_size=64, seq_len=2048, hidden_dim=8192, output_dim=8192, num_experts=16),
         dict(batch_size=128, seq_len=1024, hidden_dim=8192, output_dim=8192, num_experts=32),
+
+        # ---- Large num of Experts ----
+        dict(batch_size=4, seq_len=4096, hidden_dim=1024, output_dim=768, num_experts=512),
+        dict(batch_size=8, seq_len=2048, hidden_dim=2048, output_dim=1024, num_experts=256),
+        dict(batch_size=8, seq_len=1024, hidden_dim=4096, output_dim=2048, num_experts=128),
     ]
 
     results = []
