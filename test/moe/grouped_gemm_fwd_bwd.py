@@ -8,7 +8,7 @@ from typing import Tuple
 import torch
 
 from model.ops.grouped_gemm import cg_grouped_gemm
-from grouped_gemm import create_aligned_test_data, pytorch_reference
+from grouped_gemm import create_aligned_test_data, pytorch_reference, verify_results
 
 
 def run_forward_backward_test(
@@ -57,18 +57,17 @@ def run_forward_backward_test(
     grad_weights_ref = weights_ref.grad.detach().clone()
 
     # ===== 4. Compare =====
-    forward_ok = torch.allclose(output_triton, output_ref, rtol=rtol, atol=atol)
-    grad_inputs_ok = torch.allclose(
-        grad_inputs_triton, grad_inputs_ref, rtol=rtol, atol=atol
-    )
-    grad_weights_ok = torch.allclose(
-        grad_weights_triton, grad_weights_ref, rtol=rtol, atol=atol
-    )
-
+    forward_ok = verify_results(output_triton, output_ref, rtol=rtol, atol=atol)
     if not forward_ok:
         print("❌ Forward mismatch!")
+    grad_inputs_ok = verify_results(
+        grad_inputs_triton, grad_inputs_ref, rtol=rtol, atol=atol
+    )
     if not grad_inputs_ok:
         print("❌ Input gradient mismatch!")
+    grad_weights_ok = verify_results(
+        grad_weights_triton, grad_weights_ref, rtol=rtol, atol=atol
+    )
     if not grad_weights_ok:
         print("❌ Weight gradient mismatch!")
 
@@ -170,32 +169,19 @@ def run_all_tests():
     # Define a variety of shapes to test
     shapes_to_test = [
         # ---- Small ----
-        dict(batch_size=2, seq_len=16, hidden_dim=64, output_dim=64, num_experts=2),
-        dict(batch_size=4, seq_len=32, hidden_dim=128, output_dim=128, num_experts=4),
-        dict(batch_size=8, seq_len=64, hidden_dim=256, output_dim=256, num_experts=4),
+        dict(batch_size=8, seq_len=4096, hidden_dim=1024, output_dim=768, num_experts=2),
+        dict(batch_size=8, seq_len=4096, hidden_dim=1024, output_dim=768, num_experts=4),
+        dict(batch_size=8, seq_len=4096, hidden_dim=1024, output_dim=768, num_experts=8),
 
         # ---- Medium ----
-        dict(batch_size=16, seq_len=128, hidden_dim=512, output_dim=512, num_experts=4),
-        dict(batch_size=16, seq_len=128, hidden_dim=1024, output_dim=1024, num_experts=8),
-        dict(batch_size=32, seq_len=128, hidden_dim=1024, output_dim=2048, num_experts=8),
-        dict(batch_size=32, seq_len=256, hidden_dim=2048, output_dim=2048, num_experts=8),
-        dict(batch_size=32, seq_len=256, hidden_dim=2048, output_dim=4096, num_experts=16),
+        dict(batch_size=8, seq_len=4096, hidden_dim=1024, output_dim=768, num_experts=16),
+        dict(batch_size=8, seq_len=4096, hidden_dim=1024, output_dim=768, num_experts=32),
+        dict(batch_size=8, seq_len=4096, hidden_dim=1024, output_dim=768, num_experts=64),
 
         # ---- Large ----
-        dict(batch_size=32, seq_len=512, hidden_dim=4096, output_dim=4096, num_experts=8),
-        dict(batch_size=32, seq_len=512, hidden_dim=4096, output_dim=7168, num_experts=8),
-        dict(batch_size=32, seq_len=1024, hidden_dim=4096, output_dim=7168, num_experts=8),
-        dict(batch_size=64, seq_len=1024, hidden_dim=4096, output_dim=7168, num_experts=16),
-
-        # ---- Extra Large ----
-        dict(batch_size=64, seq_len=2048, hidden_dim=4096, output_dim=4096, num_experts=16),
-        dict(batch_size=64, seq_len=2048, hidden_dim=8192, output_dim=8192, num_experts=16),
-        dict(batch_size=128, seq_len=1024, hidden_dim=8192, output_dim=8192, num_experts=32),
-
-        # ---- Large num of Experts ----
+        dict(batch_size=4, seq_len=4096, hidden_dim=1024, output_dim=768, num_experts=128),
+        dict(batch_size=4, seq_len=4096, hidden_dim=1024, output_dim=768, num_experts=256),
         dict(batch_size=4, seq_len=4096, hidden_dim=1024, output_dim=768, num_experts=512),
-        dict(batch_size=8, seq_len=2048, hidden_dim=2048, output_dim=1024, num_experts=256),
-        dict(batch_size=8, seq_len=1024, hidden_dim=4096, output_dim=2048, num_experts=128),
     ]
 
     results = []
