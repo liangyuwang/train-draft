@@ -526,7 +526,7 @@ def cg_grouped_gemm_forward(
     ), "Expert indices length must match M_total"
 
     # Create output tensor
-    output = torch.empty((M_total, N), device=inputs.device, dtype=torch.bfloat16)
+    output = torch.empty((M_total, N), device=inputs.device, dtype=inputs.dtype)
 
     # Calculate grid size for the kernel
     NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
@@ -1030,4 +1030,33 @@ def cg_grouped_gemm(
 
     return ContiguousGroupedGEMM.apply(
         inputs, expert_weights, expert_indices, group_size_m
+    )
+
+
+# =============== API function =================
+
+def grouped_gemm(
+    inputs: torch.Tensor,
+    expert_weights: torch.Tensor,
+    expert_indices: torch.Tensor,
+    group_size_m: int = 128,
+) -> torch.Tensor:
+    """
+    API function for contiguous grouped GEMM with full backward pass support.
+
+    Args:
+        inputs: Input tensor of shape [M_total, K]
+        expert_weights: Expert weight tensor of shape [num_experts, N, K]
+        expert_indices: Indices tensor of shape [M_total] mapping each token to its expert
+        group_size_m: Size of contiguous token blocks for each expert (default: 128)
+
+    Returns:
+        Output tensor of shape [M_total, N]
+    """
+    # check contiguity
+    assert inputs.is_contiguous(), "Input tensor must be contiguous"
+    assert expert_weights.is_contiguous(), "Expert weights tensor must be contiguous"
+    assert expert_indices.is_contiguous(), "Expert indices tensor must be contiguous"
+    return cg_grouped_gemm(
+        inputs, expert_weights, expert_indices, group_size_m=group_size_m
     )
