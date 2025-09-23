@@ -168,17 +168,15 @@ class Trainer:
             yield
         assert self.config.steps_to_profile[0] >= 1, "steps_to_profile[0] should be >= 1"
         if config.use_profiler:
-            trace_handler = (
-                torch.profiler.tensorboard_trace_handler(f"{self.log_dir}/rank{self.dp_rank}")
-                if self.master_process else None
-            )
             self.profiler = torch.profiler.profile(
                 schedule=torch.profiler.schedule(
                     wait=self.config.steps_to_profile[0]-1,
                     warmup=1,
                     active=self.config.steps_to_profile[1]-self.config.steps_to_profile[0],
                     repeat=1),
-                on_trace_ready=trace_handler,
+                on_trace_ready=lambda p: p.export_chrome_trace(
+                    f"{self.log_dir}/rank{self.dp_rank}_trace.json"
+                ) if self.master_process else None,
                 record_shapes=True,
                 with_stack=True,
                 with_flops=True,
