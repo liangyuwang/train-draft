@@ -342,18 +342,14 @@ class Trainer:
             dt = t1 - t0 # time difference in seconds
             tokens_processed = self.config.B * self.config.T * self.training_info["grad_accum_steps"] * self.dp_world_size
             tokens_per_sec = tokens_processed / dt
+            mfu, actual, peak = compute_mfu_from_time(
+                self.config.B, self.config.T, self.model_config.hidden_size, 
+                self.model_config.moe_intermediate_size * self.model_config.num_experts_per_tok, 
+                self.model_config.num_layer, dt, self.training_info["grad_accum_steps"], dtype="bf16")
             if self.master_process:
-                tqdm.write(f"step {step:5d} | loss: {self.one_step_results['loss'].item():.6f} | lr {self.one_step_results['lr']:.4e} | grad norm: {self.one_step_results['grad_norm']:.4f} | dt: {dt*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
+                tqdm.write(f"step {step:5d} | loss: {self.one_step_results['loss'].item():.6f} | lr {self.one_step_results['lr']:.4e} | grad norm: {self.one_step_results['grad_norm']:.4f} | dt: {dt*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f} | MFU: {mfu*100:.2f}%")
                 with open(self.log_file, "a") as f:
                     f.write(f"{step} train {self.one_step_results['loss'].item():.6f}\n")
-            if self.profiler:
-                if step in self.config.steps_to_profile:
-                    mfu, actual, peak = compute_mfu_from_time(
-                        self.config.B, self.config.T, self.model_config.hidden_size, 
-                        self.model_config.moe_intermediate_size * self.model_config.num_experts_per_tok, 
-                        self.model_config.num_layer, dt, self.training_info["grad_accum_steps"], dtype="bf16")
-                    if self.master_process:
-                        tqdm.write(f"MFU: {mfu*100:.2f}% | Actual {actual/1e12:.2f} TFLOPs | Peak {peak/1e12:.1f} TFLOPs")
             self.results[step] = self.one_step_results
         dist.destroy_process_group()
 
