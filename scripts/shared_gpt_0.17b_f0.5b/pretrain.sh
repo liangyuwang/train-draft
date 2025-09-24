@@ -10,7 +10,6 @@ MASTER_ADDR="localhost"
 MASTER_PORT=29500
 B=8
 USE_MUON=1
-
 if [ $USE_MUON -eq 1 ]; then
   unset CUBLAS_WORKSPACE_CONFIG
 fi
@@ -49,17 +48,14 @@ fi
 MODEL_ARGS="\
   --block_size 4096 \
   --vocab_size 151936 \
-  --num_layer 24 \
+  --num_layer 20 \
   --num_attention_heads 32 \
   --num_key_value_heads 4 \
-  --hidden_size 768 \
-  --intermediate_size 3072 \
+  --hidden_size 1024 \
+  --intermediate_size 4096 \
   --dropout 0.0 \
   --tied_lm_head \
-  --use_moe_ratio 1.0 \
-  --num_experts 128 \
-  --num_experts_per_tok 4 \
-  --moe_intermediate_size 1024 \
+  --use_moe_ratio 0.0 \
   --use_shared_layers \
   --shared_layers 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 \
 "
