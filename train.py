@@ -112,14 +112,14 @@ class Trainer:
         else:
             self.train_dataset = SlidingTokenDataset(
                 dataset_path=config.dataset_path, split="train", split_rate=config.split_rate, 
-                seq_len=config.T, stride=config.T//2, batch_size=config.B*self.dp_world_size, 
+                seq_len=config.T, stride=config.T, batch_size=config.B*self.dp_world_size, 
                 seed=config.seed, rank=self.dp_rank, world_size=self.dp_world_size)
             train_sampler = DistributedSampler(self.train_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=False)
             self.train_loader = DataLoader(self.train_dataset, batch_size=config.B, shuffle=False, sampler=train_sampler, num_workers=0, pin_memory=True)
             if config.do_val:
                 self.val_dataset = SlidingTokenDataset(
                     dataset_path=config.dataset_path, split="validation", split_rate=config.split_rate, 
-                    seq_len=config.T, stride=config.T//2, batch_size=config.B*self.dp_world_size, 
+                    seq_len=config.T, stride=config.T, batch_size=config.B*self.dp_world_size, 
                     seed=config.seed, rank=self.dp_rank, world_size=self.dp_world_size)
                 val_sampler = DistributedSampler(self.val_dataset, num_replicas=self.dp_world_size, rank=self.dp_rank, shuffle=False)
                 self.val_loader = DataLoader(self.val_dataset, batch_size=config.B, shuffle=False, sampler=val_sampler, num_workers=0, pin_memory=True)
