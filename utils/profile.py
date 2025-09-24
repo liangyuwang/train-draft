@@ -55,7 +55,8 @@ def compute_mfu_from_profiler(prof, dtype="bf16", warmup_steps=0):
     mfu = actual_flops_per_sec / peak_flops if peak_flops != 0 else 0
     return mfu, actual_flops_per_sec, peak_flops
 
-def compute_mfu_from_time(batch_size, seq_len, hidden_dim, intermediate_dim, topk, num_layers, 
+def compute_mfu_from_time(batch_size, seq_len, hidden_dim, intermediate_dim, 
+                          topk, num_experts, num_layers, 
                           time, ga=1, dtype="bf16"):
     """
     Approximate Transformer Block FLOPs and MFU.
@@ -70,7 +71,8 @@ def compute_mfu_from_time(batch_size, seq_len, hidden_dim, intermediate_dim, top
             + 2 * batch_size * seq_len * hidden_dim * intermediate_dim \
             + batch_size * seq_len * intermediate_dim \
             + 2 * batch_size * seq_len * intermediate_dim * hidden_dim
-    per_layer_flops = attn_flops + topk * ffn_flops    # FLOPs per layer
+    expert_gate_flops = 2 * batch_size * seq_len * hidden_dim * num_experts  # gate_proj(D->E)
+    per_layer_flops = attn_flops + expert_gate_flops + topk * ffn_flops    # FLOPs per layer
     total_flops = 3 * num_layers * per_layer_flops  # fwd + bwd ≈ 3 × fwd FLOPs
     total_flops *= ga   # gradient accumulation
     actual_flops_per_sec = total_flops / time if time > 0 else 0.0

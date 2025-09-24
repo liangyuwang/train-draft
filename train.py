@@ -346,6 +346,7 @@ class Trainer:
                 self.config.B, self.config.T, self.model_config.hidden_size, 
                 self.model_config.moe_intermediate_size if self.model_config.use_moe_ratio > 0 else self.model_config.intermediate_size,
                 self.model_config.num_experts_per_tok if self.model_config.use_moe_ratio > 0 else 1, 
+                self.model_config.num_experts if self.model_config.use_moe_ratio > 0 else 1,
                 self.model_config.num_layer, dt, self.training_info["grad_accum_steps"], dtype="bf16")
             if self.master_process:
                 tqdm.write(f"step {step:5d} | loss: {self.one_step_results['loss'].item():.6f} | lr {self.one_step_results['lr']:.4e} | grad norm: {self.one_step_results['grad_norm']:.4f} | dt: {dt*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f} | MFU: {mfu*100:.2f}%")
