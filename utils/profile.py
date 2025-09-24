@@ -60,12 +60,16 @@ def compute_mfu_from_time(batch_size, seq_len, hidden_dim, intermediate_dim, num
     """
     Approximate Transformer Block FLOPs and MFU.
     """
-    # Attention: Q,K,V projection + QK^T + softmaxV + output projection
-    # Approx FLOPs: 4 * (B * L * D * D) + (B * L * L * D)
-    attn_flops = 4 * batch_size * seq_len * hidden_dim * hidden_dim \
-                 + batch_size * seq_len * seq_len * hidden_dim
-    # FFN: SwiGLU, 4NDD_ + ND_ = (4D + 1) * B * L * D_
-    ffn_flops = (4 * hidden_dim + 1) * batch_size * seq_len * intermediate_dim
+    # Q, K, V projection (3D->D) + Out projection (D->D)
+    qkv_out_flops = 8 * batch_size * seq_len * hidden_dim * hidden_dim  # 6BLD^2 + 2BLD^2
+    # QK^T + softmaxV
+    attn_matmul_flops = 4 * batch_size * seq_len * seq_len * hidden_dim
+    attn_flops = qkv_out_flops + attn_matmul_flops
+    # FFN: SwiGLU = gate_proj(D->D_int) + up_proj(D->D_int) + elementwise + down_proj(D_int->D)
+    ffn_flops = 2 * batch_size * seq_len * hidden_dim * intermediate_dim \
+            + 2 * batch_size * seq_len * hidden_dim * intermediate_dim \
+            + batch_size * seq_len * intermediate_dim \
+            + 2 * batch_size * seq_len * intermediate_dim * hidden_dim
     per_layer_flops = attn_flops + ffn_flops    # FLOPs per layer
     total_flops = 3 * num_layers * per_layer_flops  # fwd + bwd ≈ 3 × fwd FLOPs
     total_flops *= ga   # gradient accumulation
