@@ -25,7 +25,7 @@ from utils import (
     get_training_args, 
     get_training_info,
     get_model_params,
-    compute_mfu_from_profiler,
+    compute_mfu_from_time,
 )
 
 """
@@ -167,9 +167,7 @@ class Trainer:
         def dummy_record_function(name: str):
             yield
         def trace_handler(prof):
-            mfu, actual, peak = compute_mfu_from_profiler(prof, dtype="bf16")
             if self.master_process:
-                print(f"MFU: {mfu*100:.2f}% | Actual {actual/1e12:.2f} TFLOPs | Peak {peak/1e12:.1f} TFLOPs")
                 prof.export_chrome_trace(f"{self.log_dir}/rank{self.dp_rank}_trace.json")
         assert self.config.steps_to_profile[0] >= 1, "steps_to_profile[0] should be >= 1"
         if config.use_profiler:
@@ -329,10 +327,6 @@ class Trainer:
             torch.cuda.synchronize()
             if self.profiler:
                 self.profiler.step()
-                if step in self.config.steps_to_profile:
-                    mfu, actual, peak = compute_mfu_from_profiler(self.profiler, dtype="bf16")
-                    if self.master_process:
-                        tqdm.write(f"MFU: {mfu*100:.2f}% | Actual {actual/1e12:.2f} TFLOPs | Peak {peak/1e12:.1f} TFLOPs")
             # 2) eval
             if not self.config.debug and self.config.do_val and (step % self.config.val_every_steps == 0 or last_step):
                 self.eval()
@@ -352,6 +346,14 @@ class Trainer:
                 tqdm.write(f"step {step:5d} | loss: {self.one_step_results['loss'].item():.6f} | lr {self.one_step_results['lr']:.4e} | grad norm: {self.one_step_results['grad_norm']:.4f} | dt: {dt*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
                 with open(self.log_file, "a") as f:
                     f.write(f"{step} train {self.one_step_results['loss'].item():.6f}\n")
+            if self.profiler:
+                if step in self.config.steps_to_profile:
+                    mfu, actual, peak = compute_mfu_from_time(
+                        self.config.B, self.config.T, self.model_config.hidden_size, 
+                        self.model_config.moe_intermediate_size * self.model_config.num_experts_per_tok, 
+                        self.model_config.num_layer, dt, self.training_info["grad_accum_steps"], dtype="bf16")
+                    if self.master_process:
+                        tqdm.write(f"MFU: {mfu*100:.2f}% | Actual {actual/1e12:.2f} TFLOPs | Peak {peak/1e12:.1f} TFLOPs")
             self.results[step] = self.one_step_results
         dist.destroy_process_group()
 

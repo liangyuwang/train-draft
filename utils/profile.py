@@ -29,7 +29,8 @@ def get_gpu_peak_flops(dtype="bf16", per_device=True):
             peak = v.get(dtype, None)
             break
     if peak is None or peak == 0:
-        raise ValueError(f"Unknown or unsupported FLOPs for GPU {gpu_name} with dtype {dtype}")
+        print(f"Warning: unknown or unsupported FLOPs for GPU {gpu_name} with dtype {dtype}")
+        peak = 0
     num_gpus = torch.cuda.device_count()
     return peak if per_device else peak * num_gpus
 
@@ -51,5 +52,24 @@ def compute_mfu_from_profiler(prof, dtype="bf16", warmup_steps=0):
 
     actual_flops_per_sec = flops_total / time_total if time_total > 0 else 0.0
     peak_flops = get_gpu_peak_flops(dtype=dtype, per_device=True)
-    mfu = actual_flops_per_sec / peak_flops
+    mfu = actual_flops_per_sec / peak_flops if peak_flops != 0 else 0
+    return mfu, actual_flops_per_sec, peak_flops
+
+def compute_mfu_from_time(batch_size, seq_len, hidden_dim, intermediate_dim, num_layers, 
+                          time, ga=1, dtype="bf16"):
+    """
+    Approximate Transformer Block FLOPs and MFU.
+    """
+    # Attention: Q,K,V projection + QK^T + softmaxV + output projection
+    # Approx FLOPs: 4 * (B * L * D * D) + (B * L * L * D)
+    attn_flops = 4 * batch_size * seq_len * hidden_dim * hidden_dim \
+                 + batch_size * seq_len * seq_len * hidden_dim
+    # FFN: SwiGLU, 4NDD_ + ND_ = (4D + 1) * B * L * D_
+    ffn_flops = (4 * hidden_dim + 1) * batch_size * seq_len * intermediate_dim
+    per_layer_flops = attn_flops + ffn_flops    # FLOPs per layer
+    total_flops = 3 * num_layers * per_layer_flops  # fwd + bwd ≈ 3 × fwd FLOPs
+    total_flops *= ga   # gradient accumulation
+    actual_flops_per_sec = total_flops / time if time > 0 else 0.0
+    peak_flops = get_gpu_peak_flops(dtype=dtype, per_device=True)
+    mfu = actual_flops_per_sec / peak_flops if peak_flops != 0 else 0
     return mfu, actual_flops_per_sec, peak_flops
