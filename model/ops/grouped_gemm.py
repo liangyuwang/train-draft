@@ -11,6 +11,7 @@ Copied from https://github.com/pytorch/torchtitan/tree/main/torchtitan/experimen
 """
 
 import logging
+from packaging import version
 
 import torch
 import triton
@@ -1057,6 +1058,34 @@ def grouped_gemm(
     assert inputs.is_contiguous(), "Input tensor must be contiguous"
     assert expert_weights.is_contiguous(), "Expert weights tensor must be contiguous"
     assert expert_indices.is_contiguous(), "Expert indices tensor must be contiguous"
-    return cg_grouped_gemm(
-        inputs, expert_weights, expert_indices, group_size_m=group_size_m
-    )
+    if version.parse(torch.__version__) >= version.parse("2.8.0"):
+        # ===== Adapt for torch._grouped_mm =====
+        M, K = inputs.shape
+        num_experts, N, K_ = expert_weights.shape
+        assert K == K_, "Input dim mismatch"
+
+        # (1) Sort inputs by expert_indices
+        sorted_idx = torch.argsort(expert_indices)
+        inputs_sorted = inputs[sorted_idx]
+
+        # (2) Compute offsets (prefix sum of the number of tokens for each expert)
+        counts = torch.bincount(expert_indices, minlength=num_experts)
+        offsets = torch.cumsum(counts, dim=0, dtype=torch.int32)
+
+        # (3) weight: [E, K, N]
+        weights_t = expert_weights.transpose(-1, -2).contiguous()
+
+        # (4) Call torch._grouped_mm
+        outputs_sorted = torch._grouped_mm(inputs_sorted, weights_t, offsets)
+
+        # (5) 恢复原始顺序
+        inv_idx = torch.empty_like(sorted_idx)
+        inv_idx[sorted_idx] = torch.arange(M, device=inputs.device)
+        outputs = outputs_sorted[inv_idx]
+
+        return outputs
+    else:
+        # ===== Fallback: use your custom kernel =====
+        return cg_grouped_gemm(
+            inputs, expert_weights, expert_indices, group_size_m=group_size_m
+        )

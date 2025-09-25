@@ -38,7 +38,7 @@ class MoE(nn.Module):
         self.moe_gate = nn.Linear(self.hidden_size, self.num_experts, bias=False)
         self.experts = nn.ModuleList([MLP(config, use_moe=True) for _ in range(self.num_experts)])
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor):
         if self.fused:
             return self.forward_fused(x)
         
