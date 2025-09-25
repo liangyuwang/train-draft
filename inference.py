@@ -88,31 +88,40 @@ def test(args, tokenizer, model, prompt, rank):
 
 
 test_prompts = [
-    # --- Story & Creative Writing Starters ---
-    "Once upon a time, in a kingdom far, far away, there lived a",
-    "The year is 2099. The megacity of Neo-Veridia is powered by glowing crystals, but tonight, the largest crystal began to",
-    "The recipe for the perfect chocolate chip cookie is as follows: First, preheat your oven to 375°F (190°C). Then, in a large bowl, cream together",
-    "It was a dark and stormy night. The rain fell in torrents, and the wind howled like a banshee. Suddenly, a knock came at the door",
-    "My favorite memory from childhood is the summer I spent at my grandparents' house. Every morning, we would",
+    # --- Everyday Life ---
+    "It was the first day at her new school, and Mia walked into the classroom carrying a stack of books",
+    "The smell of freshly baked bread drifted through the small bakery as Tom unlocked the front door",
+    "On a rainy afternoon, Jake found an old photograph tucked inside the pages of a library book",
+    "When the alarm clock failed to ring, Anna rushed out of the house without breakfast",
+    "The park was almost empty, except for a boy flying a bright red kite against the gray sky",
 
-    # --- Factual Knowledge & Explanation Starters ---
-    "The planet Mars is the fourth planet from the Sun. It is often called the 'Red Planet' because",
-    "Photosynthesis is a process used by plants and other organisms to convert light energy into chemical energy. This process starts with",
-    "The three main branches of the United States government are the Legislative, the Executive, and the",
-    "A neural network is a series of algorithms that endeavors to recognize underlying relationships in a set of data. It works by",
-    "The capital of Japan is Tokyo. The capital of France is Paris. The capital of Brazil is",
+    # --- Mystery / Suspense ---
+    "Detective Harris studied the footprints near the window and noticed something unusual about their direction",
+    "The letter arrived without a return address, containing only a single sentence written in red ink",
+    "At precisely 3 a.m., the phone rang with a voice that repeated the same phrase again and again",
+    "The locked room contained no signs of forced entry, yet the priceless painting was missing",
+    "When the lights flickered and went out, a sharp scream echoed through the old theater",
 
-    # --- List & Pattern Completion ---
-    "Here is a list of common kitchen utensils:\n- Spoon\n- Fork\n- Knife\n-",
-    "The top 5 most populated countries in the world are:\n1. India\n2. China\n3. United States\n4.",
-    "English: Hello\nSpanish: Hola\nEnglish: Goodbye\nSpanish: Adiós\nEnglish: Thank you\nSpanish:",
-    "Q: What is the capital of Canada? A: Ottawa.\nQ: What is 2 + 2? A: 4.\nQ: What color is a banana? A:",
-    
-    # --- Code Completion Starters ---
-    "import pandas as pd\n\ndef load_and_clean_csv(file_path):\n    \"\"\"This function loads a CSV file and removes duplicate rows.\"\"\"\n    df = pd.read_csv(",
-    "def factorial(n):\n    \"\"\"Calculates the factorial of a non-negative integer n.\"\"\"\n    if n == 0:\n        return 1\n    else:\n        return n *",
-    "/* A simple 'Hello, World!' program in the C programming language */\n#include <stdio.h>\n\nint main() {\n   printf(\"Hello, World!\");\n   return",
-    "SELECT customer_name, order_date, total_amount\nFROM customers\nINNER JOIN orders ON customers.customer_id = "
+    # --- Science Fiction ---
+    "The android opened its eyes for the first time and scanned the laboratory filled with blinking monitors",
+    "Years after Earth had been abandoned, the survivors finally set foot on the surface again",
+    "The portal shimmered like liquid glass as the team prepared to step through to another dimension",
+    "Orbiting the dying star, the ship detected a mysterious signal that seemed almost human",
+    "The experiment was meant to last only a minute, but when the machine stopped, three years had passed",
+
+    # --- Fantasy / Adventure ---
+    "The ancient sword pulsed with a faint light as the young warrior lifted it from the stone",
+    "At the edge of the enchanted forest, the villagers warned travelers never to follow the silver path",
+    "The dragon coiled around the mountain peak, its scales reflecting the setting sun",
+    "Inside the dusty spellbook, a single handwritten note promised power at a terrible cost",
+    "The castle gates creaked open to reveal a hall filled with statues that seemed almost alive",
+
+    # --- Emotional / Reflective ---
+    "Standing at the train station, Emily watched the last carriage disappear into the distance",
+    "He found the crumpled letter at the bottom of the drawer, stained with dried tears",
+    "The old piano sat in the corner, and when she pressed the keys, the melody brought back forgotten memories",
+    "On the rooftop under the stars, they shared a silence that meant more than any words",
+    "Her hands trembled as she reached for the phone, knowing the call would change everything"
 ]
 
 def main():

@@ -4,11 +4,10 @@
 # ================================
 
 NUM_NODES=1
-NUM_GPUS=8
+NUM_GPUS=1
 NODE_RANK=0
 MASTER_ADDR="localhost"
 MASTER_PORT=29500
-B=8
 
 DISTRIBUTED_ARGS="\
   --nnodes=$NUM_NODES \
@@ -43,4 +42,4 @@ MODEL_ARGS="\
   --shared_layers 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 \
 "
 
-torchrun $DISTRIBUTED_ARGS inference.py $DISTRIBUTED_ARGS $MODEL_ARGS
+torchrun $DISTRIBUTED_ARGS inference.py $INFERENCE_ARGS $MODEL_ARGS

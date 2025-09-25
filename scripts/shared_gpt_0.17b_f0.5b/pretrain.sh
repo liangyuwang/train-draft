@@ -57,7 +57,7 @@ MODEL_ARGS="\
   --tied_lm_head \
   --use_moe_ratio 0.0 \
   --use_shared_layers \
-  --shared_layers 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 \
+  --shared_layers 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 \
 "
 
 torchrun $DISTRIBUTED_ARGS train.py $TRAINING_ARGS $MODEL_ARGS
