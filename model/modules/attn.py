@@ -115,7 +115,7 @@ class Attention(nn.Module):
         k = k.view(B, T, self.num_key_value_heads, self.head_dim).transpose(-2, -3) # (B, nh, T, hs)
         v = v.view(B, T, self.num_key_value_heads, self.head_dim).transpose(-2, -3) # (B, nh, T, hs)
         k, v = gqa_impl(k, v, self.num_key_value_heads, self.num_attention_heads)
-        if self.pos is None:
+        if self.pos is None or self.pos.size(0) != T:
             self.pos = torch.arange(T, device=x.device).unsqueeze(0)
         q, k = rope_impl(q, k, self.pos)
         dropout_p = self.dropout if self.training else 0.0
