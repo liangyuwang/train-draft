@@ -38,7 +38,7 @@ class GPT(nn.Module):
         super().__init__()
         self.config = config
         self.pos = None
-        use_moe_list = [True if i > 1 - config.use_moe_ratio * config.num_layer else False for i in range(config.num_layer)]
+        use_moe_list = [True if i >= (1 - config.use_moe_ratio) * config.num_layer else False for i in range(config.num_layer)]
         self.wte = nn.Embedding(config.vocab_size, config.hidden_size)
         self.blocks = nn.ModuleList([Block(config, use_moe) for use_moe in use_moe_list])
         self.lnf = LayerNorm(config)
