@@ -125,3 +125,52 @@ def get_moe_model_params(
         "moe_total_B": P_moe_all / 1e9,
         "moe_active_B": P_moe_active / 1e9,
     }
+
+
+def get_compiled_to_uncompiled_mapping(raw_model, compiled_keys):
+    """
+    Creates a mapping dictionary from compiled key names to the model's parameter tensors.
+
+    Args:
+        raw_model (torch.nn.Module): The uncompiled model instance.
+        compiled_keys (set or list): A collection of key names read from the checkpoint,
+                                      which may have the '_orig_mod.' prefix.
+
+    Returns:
+        dict: A dictionary where keys are the compiled names and values are the
+              corresponding parameter tensors from the model.
+    """
+    uncompiled_state_dict = raw_model.state_dict()
+    uncompiled_keys = set(uncompiled_state_dict.keys())
+    
+    mapping = {}
+    prefix = "_orig_mod."
+    
+    for compiled_key in compiled_keys:
+        # Try to remove the prefix to get the expected uncompiled key
+        if compiled_key.startswith(prefix):
+            uncompiled_key = compiled_key[len(prefix):]
+        else:
+            uncompiled_key = compiled_key
+            
+        # If this uncompiled key actually exists in the current model
+        if uncompiled_key in uncompiled_keys:
+            # Create the mapping: {compiled_key: tensor_in_the_model}
+            mapping[compiled_key] = uncompiled_state_dict[uncompiled_key]
+        else:
+            # This is a warning, indicating that a key from the checkpoint
+            # could not be matched in the current model. This might happen if
+            # the model architecture has truly changed or if there's another prefix we didn't account for.
+            print(f"Warning: Could not find a match for checkpoint key '{compiled_key}' in the model.")
+            
+    # Check if any model parameters were not mapped
+    # This helps detect if the checkpoint is missing keys that the model expects.
+    mapped_uncompiled_keys = {k[len(prefix):] if k.startswith(prefix) else k for k in mapping.keys()}
+    missing_in_ckpt = uncompiled_keys - mapped_uncompiled_keys
+    if missing_in_ckpt:
+        print("Warning: The following model parameters were not found in the checkpoint:")
+        # Print only the first few to avoid spamming the console
+        for key in sorted(list(missing_in_ckpt))[:5]:
+            print(f"  - {key}")
+
+    return mapping

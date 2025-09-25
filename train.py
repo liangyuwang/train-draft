@@ -274,10 +274,8 @@ class Trainer:
         meta_path = f"{ckpt_prefix}_meta.pt"
         meta = torch.load(meta_path, map_location=f'cuda:{self.dp_local_rank}')
         # 1) model
-        state_dict_loader.load(
-            state_dict=self.raw_model.state_dict(),
-            storage_reader=FileSystemReader(f"{ckpt_prefix}_model.pt"),
-        )
+        state_dict = torch.load(f"{ckpt_prefix}_model.pt", map_location=f'cuda:{self.dp_local_rank}', weights_only=True)
+        self.raw_model.load_state_dict(state_dict)
         # 2) optimizer
         opt_state_placeholder = {f"optimizer/dp_rank{self.dp_rank}": self.raw_optimizer.state_dict()}
         state_dict_loader.load(
@@ -378,10 +376,8 @@ class Trainer:
         next_step = (step if step is not None else 0) + 1
         sampler_epoch_next = next_step // steps_per_epoch
         sampler_iter_idx_next = (next_step % steps_per_epoch) * self.training_info['grad_accum_steps']
-        state_dict_saver.save(
-            state_dict=self.raw_model.state_dict(),
-            storage_writer=FileSystemWriter(f"{checkpoint_path}_model.pt"),
-        )
+        if self.dp_rank == 0:
+            torch.save(self.raw_model.state_dict(), f"{checkpoint_path}_model.pt")
         state_dict_saver.save(
             state_dict={f"optimizer/dp_rank{self.dp_rank}": self.raw_optimizer.state_dict()},
             storage_writer=FileSystemWriter(f"{checkpoint_path}_opt"),
