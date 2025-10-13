@@ -29,6 +29,10 @@ class GPTConfig:
     looped_layers_range: Union[list] = None  # [start, end, step], None means all layers are looped
     looped_layers_repeats: int = 1
 
+    # MLP-Looped GPT
+    use_mlp_looped: bool = False
+    mlp_loop_count: int = 2
+
     def __post_init__(self):
         if self.use_shared_layers and self.shared_layers is None:
             self.shared_layers = list(range(self.num_layer))
