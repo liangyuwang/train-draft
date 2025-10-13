@@ -151,11 +151,11 @@ class Trainer:
                 else:
                     adam_params.append(param)
             self.optimizer = MuonWithAuxAdam([
-                {'params': muon_params, 'use_muon': True},
-                {'params': adam_params, 'use_muon': False}
+                {'params': muon_params, 'use_muon': True, 'weight_decay': config.weight_decay},
+                {'params': adam_params, 'use_muon': False, 'weight_decay': config.weight_decay},
             ])
         else:
-            self.optimizer = torch.optim.AdamW(self.raw_model.parameters())
+            self.optimizer = torch.optim.AdamW(self.raw_model.parameters(), weight_decay=config.weight_decay)
         self.optimizer = DistributedOptimizer(
             optimizer=self.optimizer,
             process_group=self.dp_group,
