@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from .config import GPTConfig
 from .modules.norm import LayerNorm
-from .gpt import MLP, Block, GPT
+from .gpt import Block, GPT
 
 class LoopedMLPBlock(Block):
     def __init__(self, config: GPTConfig, *args, **kwargs):
