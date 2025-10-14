@@ -13,10 +13,9 @@ class LoopedMLPBlock(Block):
     def forward(self, x: torch.Tensor):
         # # Loop the MLP multiple times to simulate deeper computation
         x = x + self.attn(self.ln_1(x))
-        mlp_out = self.mlp(self.ln_2(x))
         for _ in range(self.mlp_loop_count):
-            mlp_out = self.mlp(mlp_out[0] if self.use_moe else mlp_out)
-        x = x + mlp_out[0] if self.use_moe else x + mlp_out
+            mlp_out = self.mlp(self.ln_2(x))
+            x = x + mlp_out[0] if self.use_moe else x + mlp_out
         return x
 
 class MLPLoopedGPT(GPT, nn.Module):
