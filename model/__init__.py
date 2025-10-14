@@ -3,6 +3,7 @@ from .gpt import GPT, Block
 from .shared_gpt import SharedGPT
 from .looped_gpt import LoopedGPT
 from .mlp_looped_gpt import MLPLoopedGPT
+from .attn_looped_gpt import AttnLoopedGPT
 
 from .modules.attn import Attention
 from .modules.mlp import MLP, MoE
@@ -19,5 +20,7 @@ def gpt(config: GPTConfig):
         return LoopedGPT(config)
     elif config.use_mlp_looped:
         return MLPLoopedGPT(config)
+    elif config.use_attn_looped:
+        return AttnLoopedGPT(config)
     else:
         return GPT(config)

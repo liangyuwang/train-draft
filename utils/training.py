@@ -58,6 +58,8 @@ def get_training_args():
     parser.add_argument("--looped_layers_repeats", type=int, default=1, help="Number of repeats for looped layers")
     parser.add_argument("--use_mlp_looped", action="store_true", help="Use MLP-looped MoE model")
     parser.add_argument("--mlp_loop_count", type=int, default=2, help="Number of times to loop the MLP in MLP-looped MoE model")
+    parser.add_argument("--use_attn_looped", action="store_true", help="Use Attention-looped MoE model")
+    parser.add_argument("--attn_loop_count", type=int, default=2, help="Number of times to loop the Attention in Attention-looped MoE model")
     args = parser.parse_args()
     return args
 
